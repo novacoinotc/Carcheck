@@ -4,6 +4,7 @@ import { logger } from './lib/logger';
 import { bearerAuth } from './lib/auth';
 import { workerRegistry } from './workers/registry';
 import { healthCheck } from './lib/health';
+import { inspectUrl } from './lib/inspect';
 
 const app = express();
 const port = Number(process.env.PORT ?? 8080);
@@ -21,6 +22,17 @@ app.get('/sources', bearerAuth, (_req: Request, res: Response) => {
     sources: Object.keys(workerRegistry),
     count: Object.keys(workerRegistry).length,
   });
+});
+
+// Diagnostic: dump real page structure of a target URL to tune selectors.
+app.post('/inspect', bearerAuth, async (req: Request, res: Response) => {
+  const { url, proxy } = req.body as { url?: string; proxy?: boolean };
+  if (!url) {
+    res.status(400).json({ error: 'url required' });
+    return;
+  }
+  const result = await inspectUrl(url, proxy ?? false);
+  res.json(result);
 });
 
 app.post('/scrape/:source', bearerAuth, async (req: Request<{ source: string }>, res: Response) => {
