@@ -160,7 +160,9 @@ export const repuveWorker: ScrapeWorker<RepuveParsed> = {
             costUsd: 0.06,
           };
         },
-        { proxy: 'auto' },
+        // REPUVE loads fast on a direct connection but times out through datacenter
+        // proxies — verified live. Force direct.
+        { proxy: 'off' },
       );
     } catch (err) {
       logger.error({ err }, 'repuve: scrape failed');
