@@ -26,6 +26,8 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    environment:
+      - SCRAPERS_DOMAIN=${SCRAPERS_DOMAIN:-scrapers.carcheckmx.com}
     ports:
       - "80:80"
       - "443:443"

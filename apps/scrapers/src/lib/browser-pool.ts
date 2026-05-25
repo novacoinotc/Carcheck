@@ -20,6 +20,9 @@ const LAUNCH_ARGS = [
   '--disable-default-apps',
   '--disable-sync',
   '--no-first-run',
+  // HTTP proxies (Webshare) break Chromium's HTTP/2 negotiation → ERR_HTTP2_PROTOCOL_ERROR.
+  // Force HTTP/1.1 so proxied requests work and don't hang on failed h2 handshakes.
+  '--disable-http2',
   '--js-flags=--max-old-space-size=512',
 ];
 
