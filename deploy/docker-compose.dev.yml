@@ -1,0 +1,13 @@
+# Fast-iteration override: bind-mount source + tsx watch so scraper code changes
+# hot-reload in ~seconds instead of a full Docker rebuild.
+# Usage on the box: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  scrapers:
+    build: !reset null
+    image: carcheck-scrapers:latest
+    volumes:
+      - ../apps/scrapers/src:/app/apps/scrapers/src
+      - ../packages/shared-types/src:/app/packages/shared-types/src
+    command: sh -c "cd /app/apps/scrapers && node_modules/.bin/tsx watch src/server.ts"
+    environment:
+      - NODE_ENV=development
