@@ -29,7 +29,7 @@ export async function healthCheck(): Promise<HealthStatus> {
     checks: {
       playwright: playwrightOk,
       captcha_configured: Boolean(process.env.TWOCAPTCHA_API_KEY),
-      proxy_configured: Boolean(process.env.PROXY_SERVER ?? process.env.BRIGHTDATA_USERNAME),
+      proxy_configured: Boolean(process.env.PROXY_USERNAME ?? process.env.BRIGHTDATA_USERNAME),
       auth_configured: Boolean(process.env.SCRAPERS_AUTH_TOKEN),
     },
   };

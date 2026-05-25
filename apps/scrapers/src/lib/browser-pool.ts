@@ -52,12 +52,12 @@ function proxyConfig(): { server: string; username?: string; password?: string }
     (process.env.BRIGHTDATA_HOST
       ? `http://${process.env.BRIGHTDATA_HOST}:${process.env.BRIGHTDATA_PORT ?? '22225'}`
       : undefined);
-  if (!server) return undefined;
-  return {
-    server,
-    username: process.env.PROXY_USERNAME ?? process.env.BRIGHTDATA_USERNAME,
-    password: process.env.PROXY_PASSWORD ?? process.env.BRIGHTDATA_PASSWORD,
-  };
+  const username = process.env.PROXY_USERNAME ?? process.env.BRIGHTDATA_USERNAME;
+  const password = process.env.PROXY_PASSWORD ?? process.env.BRIGHTDATA_PASSWORD;
+  // Require both server AND username — an auth-less proxy endpoint hangs the
+  // connection (empty Webshare creds = timeout). Fall back to direct.
+  if (!server || !username) return undefined;
+  return { server, username, password };
 }
 
 export function isProxyConfigured(): boolean {
