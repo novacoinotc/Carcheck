@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 
 const isPublicRoute = createRouteMatcher([
   '/',
@@ -25,10 +26,17 @@ const isProtectedRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, request) => {
+  // app.carcheckmx.com is the app surface — its root goes straight to the dashboard.
+  const host = request.headers.get('host') ?? '';
+  if (host.startsWith('app.') && request.nextUrl.pathname === '/') {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
+
   if (isPublicRoute(request)) return;
   if (isProtectedRoute(request)) {
     await auth.protect();
   }
+  return;
 });
 
 export const config = {

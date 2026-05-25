@@ -9,68 +9,71 @@ import {
   Brain,
   Sparkles,
   MessageCircleQuestion,
-  ArrowLeft,
   TrendingUp,
   Clock,
   Database,
   Loader2,
-  Download,
+  FileDown,
+  Car,
 } from 'lucide-react';
-import { requireDbUser } from '@/lib/auth/sync-user';
-import { getReportDetail } from '@/lib/reports/queries';
+import { getReportByShareToken } from '@/lib/reports/sharing';
+import type { ReportDetail } from '@/lib/reports/queries';
 import { formatDate, formatMXN } from '@/lib/utils';
-import { ShareButton } from '@/components/report/share-button';
 
-type ReportPageProps = { params: Promise<{ id: string }> };
+type SharePageProps = { params: Promise<{ token: string }> };
 
-export async function generateMetadata({ params }: ReportPageProps) {
-  const { id } = await params;
-  return {
-    title: `Reporte ${id.slice(0, 8)}`,
-  };
-}
+export const metadata = {
+  title: 'Reporte CarCheck',
+  robots: { index: false, follow: false },
+};
 
-export default function ReportDetailPage({ params }: ReportPageProps) {
+export default function SharedReportPage({ params }: SharePageProps) {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center py-24 text-muted-foreground">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" /> Cargando reporte…
+    <div className="min-h-screen bg-background">
+      <header className="border-b">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+          <Link href="/" className="inline-flex items-center gap-2 font-bold text-lg">
+            <Car className="h-5 w-5 text-primary" />
+            CarCheck
+          </Link>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            Generar mi propio reporte
+          </Link>
         </div>
-      }
-    >
-      <ReportContent params={params} />
-    </Suspense>
+      </header>
+      <main className="px-4 py-8">
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center py-24 text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin mr-2" /> Cargando reporte…
+            </div>
+          }
+        >
+          <SharedReportContent params={params} />
+        </Suspense>
+      </main>
+    </div>
   );
 }
 
-async function ReportContent({ params }: ReportPageProps) {
-  const { id } = await params;
-  const user = await requireDbUser();
-  const report = await getReportDetail(id, user.dbUserId);
+async function SharedReportContent({ params }: SharePageProps) {
+  const { token } = await params;
+  const report = await getReportByShareToken(token);
   if (!report) notFound();
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-end">
         <Link
-          href="/dashboard"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          href={`/api/reports/${report.id}/pdf?token=${token}`}
+          className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted"
         >
-          <ArrowLeft className="h-4 w-4" />
-          Volver a mis reportes
+          <FileDown className="h-4 w-4" />
+          Descargar PDF
         </Link>
-        <div className="flex items-center gap-2">
-          <ShareButton reportId={id} />
-          <a
-            href={`/api/reports/${id}/pdf`}
-            download
-            className="inline-flex items-center gap-2 rounded-lg border bg-card px-4 py-2 text-sm font-medium hover:bg-accent"
-          >
-            <Download className="h-4 w-4" />
-            Descargar PDF
-          </a>
-        </div>
       </div>
 
       <RiskHeader report={report} />
@@ -86,7 +89,10 @@ async function ReportContent({ params }: ReportPageProps) {
         title="Señales de alerta"
         icon={AlertOctagon}
         variant="red"
-        flags={(report.ai?.redFlags as Array<{ severity: string; finding: string; sources: string[] }>) ?? []}
+        flags={
+          (report.ai?.redFlags as Array<{ severity: string; finding: string; sources: string[] }>) ??
+          []
+        }
       />
 
       <FlagsBlock
@@ -97,34 +103,66 @@ async function ReportContent({ params }: ReportPageProps) {
       />
 
       <CrossSourceBlock
-        findings={(report.ai?.crossSourceFindings as Array<{
-          finding: string;
-          sources: string[];
-          explanation: string;
-        }>) ?? []}
+        findings={
+          (report.ai?.crossSourceFindings as Array<{
+            finding: string;
+            sources: string[];
+            explanation: string;
+          }>) ?? []
+        }
       />
 
       <RecommendationsBlock
-        recommendations={(report.ai?.recommendations as Array<{
-          priority: 'must_check' | 'should_check' | 'nice_to_check';
-          action: string;
-          reason: string;
-        }>) ?? []}
+        recommendations={
+          (report.ai?.recommendations as Array<{
+            priority: 'must_check' | 'should_check' | 'nice_to_check';
+            action: string;
+            reason: string;
+          }>) ?? []
+        }
       />
 
       <QuestionsBlock questions={(report.ai?.questionsForSeller as string[]) ?? []} />
 
       <SourcesBlock report={report} />
+
+      <div className="rounded-2xl border bg-card p-6 text-center">
+        <p className="text-sm text-muted-foreground mb-3">
+          ¿Vas a comprar un auto usado? Genera tu propio reporte de auditoría con CarCheck.
+        </p>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+        >
+          Generar mi propio reporte
+        </Link>
+      </div>
     </div>
   );
 }
 
-function RiskHeader({ report }: { report: NonNullable<Awaited<ReturnType<typeof getReportDetail>>> }) {
+function RiskHeader({ report }: { report: ReportDetail }) {
   const config: Record<string, { color: string; label: string; icon: typeof ShieldCheck }> = {
-    green: { color: 'text-risk-green border-risk-green/30 bg-risk-green/10', label: 'Riesgo BAJO', icon: ShieldCheck },
-    yellow: { color: 'text-risk-yellow border-risk-yellow/30 bg-risk-yellow/10', label: 'Riesgo MEDIO', icon: AlertTriangle },
-    red: { color: 'text-risk-red border-risk-red/30 bg-risk-red/10', label: 'Riesgo ALTO', icon: AlertOctagon },
-    unknown: { color: 'text-muted-foreground border-border bg-muted/30', label: 'Sin datos suficientes', icon: HelpCircle },
+    green: {
+      color: 'text-risk-green border-risk-green/30 bg-risk-green/10',
+      label: 'Riesgo BAJO',
+      icon: ShieldCheck,
+    },
+    yellow: {
+      color: 'text-risk-yellow border-risk-yellow/30 bg-risk-yellow/10',
+      label: 'Riesgo MEDIO',
+      icon: AlertTriangle,
+    },
+    red: {
+      color: 'text-risk-red border-risk-red/30 bg-risk-red/10',
+      label: 'Riesgo ALTO',
+      icon: AlertOctagon,
+    },
+    unknown: {
+      color: 'text-muted-foreground border-border bg-muted/30',
+      label: 'Sin datos suficientes',
+      icon: HelpCircle,
+    },
   };
   const c = config[report.riskLevel] ?? config.unknown!;
   const Icon = c.icon;
@@ -141,11 +179,12 @@ function RiskHeader({ report }: { report: NonNullable<Awaited<ReturnType<typeof 
             <p className="text-muted-foreground">{report.vehicle.body}</p>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
-            {report.vin ? (
-              <span className="font-mono">VIN: {report.vin}</span>
-            ) : null}
+            {report.vin ? <span className="font-mono">VIN: {report.vin}</span> : null}
             {report.plate ? (
-              <span className="font-mono">Placa: {report.plate}{report.plateState ? ` (${report.plateState})` : ''}</span>
+              <span className="font-mono">
+                Placa: {report.plate}
+                {report.plateState ? ` (${report.plateState})` : ''}
+              </span>
             ) : null}
             <span>Generado: {formatDate(report.createdAt)}</span>
           </div>
@@ -166,15 +205,13 @@ function RiskHeader({ report }: { report: NonNullable<Awaited<ReturnType<typeof 
   );
 }
 
-function ExecutiveSection({
-  summary,
-  marketContext,
-}: {
-  summary: string;
-  marketContext: unknown;
-}) {
+function ExecutiveSection({ summary, marketContext }: { summary: string; marketContext: unknown }) {
   const mc = marketContext as
-    | { fair_price_mxn?: { low: number; mid: number; high: number }; comparable_listings?: number; market_notes?: string }
+    | {
+        fair_price_mxn?: { low: number; mid: number; high: number };
+        comparable_listings?: number;
+        market_notes?: string;
+      }
     | undefined
     | null;
   return (
@@ -235,7 +272,9 @@ function FlagsBlock<T extends { finding: string; sources: string[]; severity?: s
                 <p className="font-medium">{f.finding}</p>
                 {f.severity ? (
                   <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-semibold uppercase ${sevBadge[f.severity] ?? ''}`}
+                    className={`text-xs px-2 py-0.5 rounded-full font-semibold uppercase ${
+                      sevBadge[f.severity] ?? ''
+                    }`}
                   >
                     {f.severity}
                   </span>
@@ -342,7 +381,7 @@ function QuestionsBlock({ questions }: { questions: string[] }) {
   );
 }
 
-function SourcesBlock({ report }: { report: NonNullable<Awaited<ReturnType<typeof getReportDetail>>> }) {
+function SourcesBlock({ report }: { report: ReportDetail }) {
   const succeeded = report.sources.filter(
     (s) => s.status === 'success' || s.status === 'partial' || s.status === 'cached',
   );
@@ -369,7 +408,6 @@ function SourcesBlock({ report }: { report: NonNullable<Awaited<ReturnType<typeo
               {(report.totalQueryTimeMs / 1000).toFixed(1)}s
             </span>
           ) : null}
-          <span>Costo backend: ${parseFloat(report.totalCostUsd).toFixed(3)} USD</span>
         </div>
       </div>
       <table className="w-full text-sm">
@@ -379,7 +417,6 @@ function SourcesBlock({ report }: { report: NonNullable<Awaited<ReturnType<typeo
             <th className="px-6 py-3 font-medium">País</th>
             <th className="px-6 py-3 font-medium">Estado</th>
             <th className="px-6 py-3 font-medium text-right">Tiempo</th>
-            <th className="px-6 py-3 font-medium text-right">Costo</th>
           </tr>
         </thead>
         <tbody>
@@ -397,9 +434,6 @@ function SourcesBlock({ report }: { report: NonNullable<Awaited<ReturnType<typeo
               </td>
               <td className="px-6 py-3 text-right text-muted-foreground">
                 {s.responseTimeMs ?? 0}ms
-              </td>
-              <td className="px-6 py-3 text-right text-muted-foreground">
-                ${parseFloat(s.costUsd).toFixed(3)}
               </td>
             </tr>
           ))}
