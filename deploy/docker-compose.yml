@@ -9,6 +9,9 @@ services:
       - scrapers.env
     expose:
       - "8080"
+    ports:
+      # localhost-only bind so the host can health-check without exposing 8080 publicly
+      - "127.0.0.1:8080:8080"
     deploy:
       resources:
         limits:
