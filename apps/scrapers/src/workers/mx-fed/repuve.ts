@@ -75,7 +75,13 @@ export const repuveWorker: ScrapeWorker<RepuveParsed> = {
           await field.waitFor({ state: 'visible', timeout: 10_000 });
           await field.fill(queryKind === 'vin' ? vinValue! : plateValue!);
 
-          // Extract the reCAPTCHA site key from the recaptcha iframe (?k=SITEKEY).
+          // Wait for the reCAPTCHA iframe to actually render before reading the sitekey
+          // (it loads async — reading too early gives an empty/stale key = flaky solves).
+          await page
+            .locator('iframe[src*="recaptcha"]')
+            .first()
+            .waitFor({ state: 'attached', timeout: 15_000 })
+            .catch(() => undefined);
           const siteKey = await page.evaluate(() => {
             const ifr = document.querySelector('iframe[src*="recaptcha"]') as HTMLIFrameElement | null;
             if (ifr) {
@@ -93,44 +99,56 @@ export const repuveWorker: ScrapeWorker<RepuveParsed> = {
             };
           }
 
-          logger.info({ queryKind }, 'repuve: solving recaptcha');
-          const token = await solveReCaptchaV2({ siteKey, pageUrl: REPUVE_URL });
-          // Set the token in every g-recaptcha-response textarea AND invoke the
-          // grecaptcha callback — setting the value alone isn't enough for SPAs
-          // that gate submit on the callback firing.
-          await page.evaluate((t) => {
-            document.querySelectorAll('textarea[name="g-recaptcha-response"]').forEach((el) => {
-              const ta = el as HTMLTextAreaElement;
-              ta.value = t;
-              ta.dispatchEvent(new Event('change', { bubbles: true }));
-            });
-            try {
-              const cfg = (window as unknown as { ___grecaptcha_cfg?: { clients?: Record<string, unknown> } })
-                .___grecaptcha_cfg;
-              if (cfg?.clients) {
-                for (const client of Object.values(cfg.clients)) {
-                  for (const val of Object.values(client as Record<string, unknown>)) {
-                    if (val && typeof val === 'object') {
-                      for (const maybe of Object.values(val as Record<string, unknown>)) {
-                        const cb = (maybe as { callback?: unknown })?.callback;
-                        if (typeof cb === 'function') {
-                          (cb as (tok: string) => void)(t);
+          // reCAPTCHA solves are flaky (token expiry/timing). Retry up to 3 times:
+          // solve → inject token + invoke callback → submit → check for rejection.
+          const MAX_ATTEMPTS = 3;
+          let bodyText = '';
+          for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            logger.info({ queryKind, attempt }, 'repuve: solving recaptcha');
+            const token = await solveReCaptchaV2({ siteKey, pageUrl: REPUVE_URL });
+            await page.evaluate((t) => {
+              document.querySelectorAll('textarea[name="g-recaptcha-response"]').forEach((el) => {
+                const ta = el as HTMLTextAreaElement;
+                ta.value = t;
+                ta.dispatchEvent(new Event('change', { bubbles: true }));
+              });
+              try {
+                const cfg = (window as unknown as { ___grecaptcha_cfg?: { clients?: Record<string, unknown> } })
+                  .___grecaptcha_cfg;
+                if (cfg?.clients) {
+                  for (const client of Object.values(cfg.clients)) {
+                    for (const val of Object.values(client as Record<string, unknown>)) {
+                      if (val && typeof val === 'object') {
+                        for (const maybe of Object.values(val as Record<string, unknown>)) {
+                          const cb = (maybe as { callback?: unknown })?.callback;
+                          if (typeof cb === 'function') {
+                            (cb as (tok: string) => void)(t);
+                          }
                         }
                       }
                     }
                   }
                 }
+              } catch {
+                /* best-effort callback invocation */
               }
-            } catch {
-              /* best-effort callback invocation */
+            }, token);
+            await page.waitForTimeout(500);
+
+            await page
+              .getByRole('button', { name: /buscar/i })
+              .first()
+              .click({ timeout: 10_000 })
+              .catch(() => undefined);
+            await page.waitForTimeout(4500);
+
+            bodyText = await page.locator('body').innerText({ timeout: 10_000 }).catch(() => '');
+            if (!bodyText.toLowerCase().includes('recaptcha no fue superado')) {
+              break; // accepted
             }
-          }, token);
-          await page.waitForTimeout(500);
+            logger.warn({ attempt }, 'repuve: recaptcha rejected, retrying');
+          }
 
-          await page.getByRole('button', { name: /buscar/i }).first().click({ timeout: 10_000 });
-          await page.waitForTimeout(4000);
-
-          const bodyText = await page.locator('body').innerText({ timeout: 10_000 });
           const lower = bodyText.toLowerCase();
 
           // A real hit shows vehicle data ("Marca", "Estatus"...). If the page still
