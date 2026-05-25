@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { Plus, FileSearch, AlertOctagon, AlertTriangle, ShieldCheck, HelpCircle } from 'lucide-react';
+import { Suspense } from 'react';
+import { Plus, FileSearch, AlertOctagon, AlertTriangle, ShieldCheck, HelpCircle, Loader2 } from 'lucide-react';
 import { requireDbUser } from '@/lib/auth/sync-user';
 import { listUserReports } from '@/lib/reports/queries';
 import { formatRelativeTime } from '@/lib/utils';
@@ -8,7 +9,21 @@ export const metadata = {
   title: 'Mis reportes',
 };
 
-export default async function DashboardPage() {
+export default function DashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-24 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" /> Cargando reportes…
+        </div>
+      }
+    >
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+async function DashboardContent() {
   const user = await requireDbUser();
   const reports = await listUserReports(user.dbUserId, 100);
 

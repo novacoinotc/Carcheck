@@ -1,5 +1,36 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 import { Show, UserButton } from '@clerk/nextjs';
+
+function AuthNav() {
+  return (
+    <div className="flex items-center gap-3">
+      <Show when="signed-out">
+        <Link
+          href="/sign-in"
+          className="text-sm font-medium hover:text-primary transition-colors"
+        >
+          Iniciar sesión
+        </Link>
+        <Link
+          href="/sign-up"
+          className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 transition-opacity"
+        >
+          Crear cuenta
+        </Link>
+      </Show>
+      <Show when="signed-in">
+        <Link
+          href="/dashboard"
+          className="text-sm font-medium hover:text-primary transition-colors"
+        >
+          Mi cuenta
+        </Link>
+        <UserButton />
+      </Show>
+    </div>
+  );
+}
 
 export default function MarketingLayout({
   children,
@@ -27,31 +58,9 @@ export default function MarketingLayout({
               Para empresas
             </Link>
           </nav>
-          <div className="flex items-center gap-3">
-            <Show when="signed-out">
-              <Link
-                href="/sign-in"
-                className="text-sm font-medium hover:text-primary transition-colors"
-              >
-                Iniciar sesión
-              </Link>
-              <Link
-                href="/sign-up"
-                className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm hover:opacity-90 transition-opacity"
-              >
-                Crear cuenta
-              </Link>
-            </Show>
-            <Show when="signed-in">
-              <Link
-                href="/dashboard"
-                className="text-sm font-medium hover:text-primary transition-colors"
-              >
-                Mi cuenta
-              </Link>
-              <UserButton />
-            </Show>
-          </div>
+          <Suspense fallback={<div className="flex items-center gap-3 h-9" />}>
+            <AuthNav />
+          </Suspense>
         </div>
       </header>
       <main className="flex-1">{children}</main>
@@ -96,7 +105,7 @@ export default function MarketingLayout({
             </div>
           </div>
           <div className="mt-10 pt-6 border-t text-center text-sm text-muted-foreground">
-            © {new Date().getFullYear()} CarCheck por NOVACORP. Todos los derechos reservados.
+            © 2026 CarCheck por NOVACORP. Todos los derechos reservados.
           </div>
         </div>
       </footer>

@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { Suspense } from 'react';
 import Link from 'next/link';
 import {
   AlertOctagon,
@@ -12,6 +13,7 @@ import {
   TrendingUp,
   Clock,
   Database,
+  Loader2,
 } from 'lucide-react';
 import { requireDbUser } from '@/lib/auth/sync-user';
 import { getReportDetail } from '@/lib/reports/queries';
@@ -26,7 +28,21 @@ export async function generateMetadata({ params }: ReportPageProps) {
   };
 }
 
-export default async function ReportDetailPage({ params }: ReportPageProps) {
+export default function ReportDetailPage({ params }: ReportPageProps) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-24 text-muted-foreground">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" /> Cargando reporte…
+        </div>
+      }
+    >
+      <ReportContent params={params} />
+    </Suspense>
+  );
+}
+
+async function ReportContent({ params }: ReportPageProps) {
   const { id } = await params;
   const user = await requireDbUser();
   const report = await getReportDetail(id, user.dbUserId);
