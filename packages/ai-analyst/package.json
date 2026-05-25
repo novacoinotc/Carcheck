@@ -1,0 +1,26 @@
+{
+  "name": "@carcheck/ai-analyst",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "echo skip"
+  },
+  "dependencies": {
+    "@carcheck/shared-types": "workspace:*",
+    "ai": "^6.0.0",
+    "@ai-sdk/anthropic": "^3.0.79",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@carcheck/tsconfig": "workspace:*",
+    "typescript": "^5.7.3",
+    "@types/node": "^22.10.5"
+  }
+}

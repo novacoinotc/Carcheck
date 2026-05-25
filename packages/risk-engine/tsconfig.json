@@ -1,0 +1,9 @@
+{
+  "extends": "@carcheck/tsconfig/node.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "verbatimModuleSyntax": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

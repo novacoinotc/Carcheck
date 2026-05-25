@@ -1,0 +1,12 @@
+export { nhtsaVpicClient } from './clients/nhtsa-vpic';
+export { nhtsaRecallsClient } from './clients/nhtsa-recalls';
+export { vinAuditNmvtisClient } from './clients/vinaudit-nmvtis';
+export { vinAuditMarketClient } from './clients/vinaudit-market';
+export { marketCheckHistoryClient } from './clients/marketcheck-history';
+export { satCfdiClient } from './clients/sat-cfdi';
+export { clientRegistry, getClient } from './registry';
+export type { SourceClient, SourceResult, QueryInput } from '@carcheck/shared-types';
+export type { VinAuditNmvtisParsed } from './clients/vinaudit-nmvtis';
+export type { VinAuditMarketParsed } from './clients/vinaudit-market';
+export type { MarketCheckHistoryParsed } from './clients/marketcheck-history';
+export type { SatCfdiParsed, SatCfdiInput } from './clients/sat-cfdi';

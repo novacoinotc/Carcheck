@@ -1,0 +1,15 @@
+# Caddy auto-provisions HTTPS via Let's Encrypt for the domain below.
+# Replace scrapers.carcheck.mx with your actual subdomain (must point an A record
+# to this server's public IP before starting Caddy).
+
+{$SCRAPERS_DOMAIN} {
+	encode gzip
+	reverse_proxy scrapers:8080 {
+		health_uri /health
+		health_interval 30s
+	}
+	log {
+		output stdout
+		format console
+	}
+}

@@ -1,0 +1,12 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/scrapers/Dockerfile"
+watchPatterns = ["apps/scrapers/**", "packages/shared-types/**", "packages/tsconfig/**", "pnpm-workspace.yaml", "pnpm-lock.yaml"]
+
+[deploy]
+startCommand = "node apps/scrapers/dist/server.js"
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+numReplicas = 1

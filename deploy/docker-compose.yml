@@ -1,0 +1,38 @@
+services:
+  scrapers:
+    build:
+      context: ..
+      dockerfile: apps/scrapers/Dockerfile
+    image: carcheck-scrapers:latest
+    restart: unless-stopped
+    env_file:
+      - scrapers.env
+    expose:
+      - "8080"
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - scrapers
+
+volumes:
+  caddy_data:
+  caddy_config:
