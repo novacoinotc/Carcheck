@@ -9,6 +9,7 @@ export interface HealthStatus {
     playwright: boolean;
     captcha_configured: boolean;
     proxy_configured: boolean;
+    proxy_pool_size: number;
     auth_configured: boolean;
   };
 }
