@@ -151,6 +151,21 @@ Leyenda: ✅ funciona · 🟡 pipeline ok / falta validar dato real · 🔧 en p
 
 ## 11. Diario de hallazgos (test → save)
 
+### 2026-05-25 — HALLAZGO CLAVE: las baseUrl del registro son LANDINGS, no los forms de consulta
+
+Al inspeccionar los forms reales de los estados "LOADS_DIRECT_FORM" se confirmó que la mayoría
+NO son el formulario de consulta vehicular sino la página de inicio del portal:
+- Coahuila: `cf-turnstile-response` = **Cloudflare Turnstile** + "Un momento…" (challenge CF)
+- GTO: `_token` (Laravel CSRF) + `clave_temporal`
+- NL: `__VIEWSTATE` + `buscar1/buscar2` (buscador del sitio, NO el form vehicular)
+- BC: `location, categoriaId` (selector de categoría) · SLP: `hidden-galeria` · Chih: buscador genérico
+
+**Implicación**: para cada una de las 32 entidades hay que (1) navegar/encontrar la URL DEEP real
+del consultaweb de refrendo/adeudos, (2) manejar su captcha específico (Turnstile / reCAPTCHA /
+imagen — varían), (3) parsear su resultado. Las baseUrl actuales en source_registry deben
+corregirse a las URLs deep reales. **Esto es 32 investigaciones individuales** + las federales/US.
+No es automatizable con una factory genérica. Es trabajo per-site sostenido + mantenimiento.
+
 ### 2026-05-25 — SWEEP COMPLETO de 66 scrapers (scripts/sweep-sources.ts → /tmp/sweep.json)
 
 Categorización automática inspeccionando cada sitio real (directo + proxy):
