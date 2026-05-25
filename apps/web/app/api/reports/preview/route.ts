@@ -3,6 +3,8 @@ import { runPreviewReport } from '@/lib/orchestrator/run-preview';
 import { vinSchema } from '@carcheck/shared-types';
 import { ZodError } from 'zod';
 
+export const maxDuration = 300;
+
 /**
  * Public preview endpoint — runs the orchestrator + Claude AI analysis end-to-end
  * with whatever Vercel-side source clients are enabled and have credentials.

@@ -115,7 +115,7 @@ export async function analyzeReport(input: AnalyzeInput): Promise<AnalyzeOutput>
       { role: 'user', content: userPayload },
     ],
     output: Output.object({ schema: aiAnalysisSchema }),
-    maxOutputTokens: 4096,
+    maxOutputTokens: 8192,
     allowSystemInMessages: true,
   });
 
