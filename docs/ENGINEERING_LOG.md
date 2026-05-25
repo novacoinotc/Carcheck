@@ -149,8 +149,22 @@ Leyenda: ✅ funciona · 🟡 pipeline ok / falta validar dato real · 🔧 en p
 ## 9. Fases completadas
 0 Setup · 1 VIN decode+recalls · 2 APIs+IA · 2.5 Claude · 3 scrapers MX fed + dashboard · 4 las 96 fuentes scaffolded + deploy DO + dominios + PDF + share. **Ahora**: Fase 5 = tuning per-site de scrapers.
 
+## 11. Diario de hallazgos (test → save)
+
+### 2026-05-25 — sweep diagnóstico inicial
+- **REPUVE**: reCAPTCHA v2, sitekey `6Lfy8AEoAAAAANclz0Doczn6y826fM0BjOPXEn9B`, carga directo. Token 2captcha rechazado tras 3 retries → el SPA lee el token de forma que la inyección no satisface. NEXT: interceptar el AJAX de búsqueda del SPA (capturar la request de "Buscar" y reproducirla con el token) o proveedor REPUVE.
+- **CDMX finanzas**: solo vía PROXY. `#inputPlaca` + `#captcha_code` (img). Worker custom hecho, pipeline ok. NEXT: placa CDMX real + endurecer parser (nav-words dan falso positivo).
+- **RUG**: MIGRÓ a `https://rug.economia.gob.mx/Rug/home/inicio.do`. NEXT: hallar ruta de consulta pública y actualizar worker.
+- **Jalisco (sfp.jalisco.gob.mx)**: ERROR directo Y proxy (chrome-error). NEXT: hallar URL real del consultaweb de refrendo Jalisco.
+- **CDMX Verificentros (smahologramas.dsinet.com.mx)**: 200 pero body VACÍO → app JS/frameset. NEXT: más wait + entrar al frame.
+- **NL (icvnl.gob.mx/EstadodeCuenta)**: carga directo, ASP.NET VIEWSTATE; form tras navegación. NEXT: hallar sub-página del form.
+
+**Aprendizaje**: portales gob (1) cambian URL, (2) son apps JS async, (3) erroran sin path exacto, (4) o tienen captcha. Cada uno es investigación propia. Este diario test→save es el mecanismo anti-pérdida entre sesiones.
+
+---
+
 ## 10. Checklist para retomar
-1. `ssh -i ~/.ssh/carcheck_do root@159.223.179.79` + `curl localhost:8080/health`
+1. Lee este doc completo primero. `ssh -i ~/.ssh/carcheck_do root@159.223.179.79` + `curl localhost:8080/health`
 2. Confirmar modo dev activo (hot-reload). Si no: `cd /opt/carcheck/deploy && docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`
 3. Tomar la siguiente fuente ⏸ del backlog (sección 6), inspeccionar, afinar, probar, **guardar resultado aquí**.
 4. Placa real para validar Jalisco/federales: **JY53245** (VIN 1FTEW1E85NFC18609, Ford Lobo 2022 importado).
