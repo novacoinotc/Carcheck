@@ -37,26 +37,47 @@ const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 /**
- * Provider-agnostic proxy config. Reads generic PROXY_* env vars so it works
- * with Webshare, Bright Data, or any HTTP/SOCKS proxy.
+ * Provider-agnostic proxy config with list rotation. Reads generic PROXY_* env
+ * vars so it works with Webshare (proxy list or rotating endpoint), Bright Data, etc.
  *
- *   PROXY_SERVER   e.g. http://p.webshare.io:80  (Webshare rotating endpoint)
- *   PROXY_USERNAME e.g. myuser-rotate            (Webshare appends -rotate for rotation)
- *   PROXY_PASSWORD
+ *   PROXY_LIST     comma/newline separated `host:port` pairs (Webshare proxy list).
+ *                  A random entry is picked per request for IP rotation.
+ *   PROXY_SERVER   single endpoint e.g. http://p.webshare.io:80 (used if no PROXY_LIST)
+ *   PROXY_USERNAME shared username for all proxies
+ *   PROXY_PASSWORD shared password
  *
  * Legacy BRIGHTDATA_* vars are still honored as a fallback.
  */
+let _proxyList: string[] | null = null;
+
+function getProxyList(): string[] {
+  if (_proxyList) return _proxyList;
+  const raw = process.env.PROXY_LIST ?? '';
+  _proxyList = raw
+    .split(/[,\n]/)
+    .map((s) => s.trim())
+    .filter((s) => /^[\w.-]+:\d+$/.test(s));
+  return _proxyList;
+}
+
 function proxyConfig(): { server: string; username?: string; password?: string } | undefined {
+  const username = process.env.PROXY_USERNAME ?? process.env.BRIGHTDATA_USERNAME;
+  const password = process.env.PROXY_PASSWORD ?? process.env.BRIGHTDATA_PASSWORD;
+  // Auth is required — an auth-less proxy endpoint hangs the connection. Direct otherwise.
+  if (!username) return undefined;
+
+  const list = getProxyList();
+  if (list.length > 0) {
+    const pick = list[Math.floor(Math.random() * list.length)]!;
+    return { server: `http://${pick}`, username, password };
+  }
+
   const server =
     process.env.PROXY_SERVER ??
     (process.env.BRIGHTDATA_HOST
       ? `http://${process.env.BRIGHTDATA_HOST}:${process.env.BRIGHTDATA_PORT ?? '22225'}`
       : undefined);
-  const username = process.env.PROXY_USERNAME ?? process.env.BRIGHTDATA_USERNAME;
-  const password = process.env.PROXY_PASSWORD ?? process.env.BRIGHTDATA_PASSWORD;
-  // Require both server AND username — an auth-less proxy endpoint hangs the
-  // connection (empty Webshare creds = timeout). Fall back to direct.
-  if (!server || !username) return undefined;
+  if (!server) return undefined;
   return { server, username, password };
 }
 
