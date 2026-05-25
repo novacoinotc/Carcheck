@@ -13,6 +13,7 @@ export interface InspectResult {
   buttons?: Array<{ text: string; type: string; id: string }>;
   selects?: Array<{ name: string; id: string }>;
   forms?: Array<{ action: string; method: string }>;
+  links?: Array<{ text: string; href: string }>;
   iframes?: string[];
   bodyTextSnippet?: string;
   error?: string;
@@ -78,6 +79,19 @@ export async function inspectUrl(url: string, useProxy: boolean): Promise<Inspec
           )
           .catch(() => []);
 
+        const links = await page
+          .locator('a[href]')
+          .evaluateAll((els) =>
+            els
+              .slice(0, 60)
+              .map((e) => ({
+                text: (e.textContent || '').trim().slice(0, 40),
+                href: (e as HTMLAnchorElement).href || '',
+              }))
+              .filter((l) => l.href && !l.href.startsWith('javascript')),
+          )
+          .catch(() => []);
+
         const iframes = await page
           .locator('iframe')
           .evaluateAll((els) => els.slice(0, 10).map((e) => (e as HTMLIFrameElement).src || ''))
@@ -103,6 +117,7 @@ export async function inspectUrl(url: string, useProxy: boolean): Promise<Inspec
           buttons,
           selects,
           forms,
+          links,
           iframes: iframes.filter(Boolean),
           bodyTextSnippet: bodyText.slice(0, 600),
         };
