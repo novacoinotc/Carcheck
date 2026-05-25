@@ -151,6 +151,29 @@ Leyenda: ✅ funciona · 🟡 pipeline ok / falta validar dato real · 🔧 en p
 
 ## 11. Diario de hallazgos (test → save)
 
+### 2026-05-25 — SWEEP COMPLETO de 66 scrapers (scripts/sweep-sources.ts → /tmp/sweep.json)
+
+Categorización automática inspeccionando cada sitio real (directo + proxy):
+
+**LOADS_DIRECT_FORM (24)** — cargan directo CON form, máxima prioridad (llenar+parsear):
+mx_fed_rug, mx_fed_amda, mx_fed_profeco_alertas, mx_env_cdmx_doble_cero, usa_fed_epa_certification,
+usa_st_ca_smogcheck, auction_copart, oem_honda, oem_vw, oem_bmw, oem_mercedes, mkt_mx_autocosmos,
+y estados: bc, bcs, camp, chih, coah, cdmx, gto, mich, nl, qroo, slp, tlax.
+
+**LOADS_PROXY_FORM (2)**: mx_st_mor_control_vehicular, mkt_mx_kavak (cargan con form SOLO vía proxy).
+
+**CAPTCHA_IMAGE (6)**: mx_fed_repuve(reCAPTCHA en realidad), mx_st_oax, mx_st_son, usa_fed_nicb_vincheck, oem_toyota, mkt_mx_seminuevos.
+
+**LOADS_DIRECT_NOFORM (8)** — cargan pero el form es JS/async o frame: mx_st_chis, mx_st_qro, mx_st_yuc, mx_env_cdmx_verificentros, mx_judicial_fge_jalisco, mx_judicial_fge_veracruz, auction_iaa, mkt_mx_mercadolibre.
+
+**OTHER_error (13)** — chrome-error (TLS/conexión): estados col, dgo, mex(EdoMex), gro, jal, nay, sin, tab, tamps, ver, zac + mx_env_jalisco_verificacion + mx_judicial_fgjem.
+
+**UNREACHABLE (9)**: mx_aduana_anam_quick, mx_aduana_anam_regularizacion, mx_st_hgo, mx_st_pue, mx_env_edomex_verificacion, mx_judicial_fgjcdmx, mx_judicial_fge_puebla, oem_ford, oem_nissan.
+
+**BLOCKED_CDN (4)**: mx_st_ags, mx_judicial_fge_nl, oem_gm, oem_stellantis.
+
+**Plan de ataque**: (1) batch LOADS_DIRECT_FORM con la factory mejorada de estados; (2) PROXY_FORM; (3) CAPTCHA_IMAGE con 2captcha; (4) NOFORM con más wait/frame; (5) OTHER_error/UNREACHABLE/BLOCKED → mayoría needs residential proxy (user) o están caídos.
+
 ### 2026-05-25 — sweep diagnóstico inicial
 - **REPUVE**: reCAPTCHA v2, sitekey `6Lfy8AEoAAAAANclz0Doczn6y826fM0BjOPXEn9B`, carga directo. Token 2captcha rechazado tras 3 retries → el SPA lee el token de forma que la inyección no satisface. NEXT: interceptar el AJAX de búsqueda del SPA (capturar la request de "Buscar" y reproducirla con el token) o proveedor REPUVE.
 - **CDMX finanzas**: solo vía PROXY. `#inputPlaca` + `#captcha_code` (img). Worker custom hecho, pipeline ok. NEXT: placa CDMX real + endurecer parser (nav-words dan falso positivo).
