@@ -177,6 +177,30 @@ Leyenda: ✅ funciona · 🟡 pipeline ok / falta validar dato real · 🔧 en p
 
 ## 11. Diario de hallazgos (test → save)
 
+### 2026-05-25 (sesión 2) — ✅ OEM RECALLS (9 fuentes) RESUELTAS vía backbone NHTSA
+
+**Problema hallado**: el parser OEM viejo (`parseOemRecalls`) producía FALSOS POSITIVOS — contaba
+divs/boilerplate de la página como "recalls" (ej. oem_honda devolvía `open_recalls:4` con títulos
+"Honda Owners", "Last Updated…"). Peor que fallar: alimentaría basura a la IA. Además corría las 9
+OEM contra CUALQUIER VIN (Honda "encontraba recalls" en un Ford).
+
+**Solución (commit)**: refactor a factory `makeOemRecallWorker` en `oem/_shared.ts`:
+- Nuevo `lib/vin.ts`: `decodeVin()` (NHTSA vPIC, cacheado) + `getNhtsaRecalls(make,model,year)`.
+- **Make-gating**: decodifica el VIN; si el make no es de esa OEM → `not_applicable` (correcto).
+- **Backbone NHTSA**: `api.nhtsa.gov/recalls/recallsByVehicle` (gratis, sin key, NO bloqueado) es la
+  fuente primaria de recalls reales por make/model/year. El portal OEM es supplement best-effort
+  (confirma campañas VIN-específicas); si bloquea datacenter IP NO falla el worker.
+- **Parser estricto**: solo cuenta recalls si hay IDs de campaña NHTSA (`\d{2}V\d{3}`) o texto
+  explícito "no recalls". Nunca inventa conteos desde boilerplate.
+
+**Resultado probado (VIN Ford 1FTEW1E85NFC18609)**: `oem_ford` → success, **22 recalls reales**
+(POWER TRAIN:DRIVESHAFT, ELECTRICAL:TRAILER BRAKE, STEERING:COLUMN…). honda/toyota/gm/nissan/bmw →
+`not_applicable` make_mismatch (correcto, 0 falsos positivos). Las 9 OEM ahora devuelven dato real
+para su marca o abstención honesta. Mapeo de marcas: ford=FORD/LINCOLN, gm=CHEVROLET/GMC/BUICK/
+CADILLAC, nissan=NISSAN/INFINITI, vw=VOLKSWAGEN, bmw=BMW/MINI, mercedes=MERCEDES-BENZ,
+stellantis=JEEP/RAM/DODGE/CHRYSLER/FIAT, toyota=TOYOTA/LEXUS/SCION, honda=HONDA/ACURA.
+
+
 ### 2026-05-25 — HALLAZGO CLAVE: las baseUrl del registro son LANDINGS, no los forms de consulta
 
 Al inspeccionar los forms reales de los estados "LOADS_DIRECT_FORM" se confirmó que la mayoría
