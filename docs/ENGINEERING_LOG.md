@@ -177,6 +177,27 @@ Leyenda: ✅ funciona · 🟡 pipeline ok / falta validar dato real · 🔧 en p
 
 ## 11. Diario de hallazgos (test → save)
 
+### 2026-05-25 (sesión 2) — ✅ PRUEBA END-TO-END EN PRODUCCIÓN (app.carcheckmx.com)
+
+Corrí el orquestador completo en vivo: `GET app.carcheckmx.com/api/reports/preview?vin=1FTEW1E85NFC18609`
+→ HTTP 200, 217s, **análisis IA generado**, costo $1.74. 37 fuentes (sólo VIN, sin placa → portales
+estatales correctamente fuera). Desglose REAL:
+- **success/cached (11 con dato real)**: nhtsa_vpic, nhtsa_recalls, oem_ford (22 recalls), epa, profeco,
+  auction_iaa, auction_copart, mkt_mercadolibre, mkt_kavak, fge_jalisco, fgjcdmx.
+- **not_applicable (11, correctos)**: 8 OEM no-Ford, sat_cfdi, amda, sesnsp_stats.
+- **skipped (3, honesto, requiere API key user)**: vinaudit_nmvtis, vinaudit_market, marketcheck.
+- **partial (2, honesto captcha)**: nicb, ca_smog.
+- **failed/timeout (10)**: repuve (captcha_rejected honesto), rug (URL muerta / consulta tras login),
+  anam_quick + anam_regularizacion (CDN, necesita residencial), 4 fiscalías (fgjem/fge_nl/fge_puebla/
+  fge_veracruz, bespoke), seminuevos + autocosmos (lentos/selectores).
+
+**El sistema FUNCIONA end-to-end**: ~11 fuentes con dato real + IA, resto manejado honestamente.
+Deploy a Vercel prod hecho (timeout 150s). Caddy recargado (300s). **Imagen prod del box reconstruida**
+(`docker compose up -d --build`) — todos los fixes de scraper BAKED IN + durables. Smoke test post-build OK.
+
+**RUG**: rug.economia.gob.mx/Rug — la consulta pública ahora exige cuenta o está tras menú JS (no es el
+viejo /ConsultaPublica/Buscador que da 404). NEXT: crear cuenta gratuita o resolver el menú JS.
+
 ### 2026-05-25 (sesión 2) — RESUMEN: ~26 fuentes resueltas/arregladas + 3 bugs sistémicos
 
 **Estado por categoría tras la sesión 2** (todo probado contra sitios reales, VIN Ford 1FTEW1E85NFC18609):
