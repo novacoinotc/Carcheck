@@ -112,6 +112,18 @@ export const repuveWorker: ScrapeWorker<RepuveParsed> = {
                 ta.value = t;
                 ta.dispatchEvent(new Event('change', { bubbles: true }));
               });
+              // The SPA encrypts {criterio + grecaptcha.getResponse()} client-side, so the
+              // token MUST come back from getResponse() — override it to return our token.
+              try {
+                const g = (window as unknown as { grecaptcha?: { getResponse?: unknown; enterprise?: { getResponse?: unknown } } })
+                  .grecaptcha;
+                if (g) {
+                  g.getResponse = () => t;
+                  if (g.enterprise) g.enterprise.getResponse = () => t;
+                }
+              } catch {
+                /* ignore */
+              }
               try {
                 const cfg = (window as unknown as { ___grecaptcha_cfg?: { clients?: Record<string, unknown> } })
                   .___grecaptcha_cfg;
