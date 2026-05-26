@@ -1,6 +1,7 @@
 import { withPage } from '../../lib/browser-pool';
 import { logger } from '../../lib/logger';
 import { resolveVehicle } from '../../lib/vin';
+import { isBotWalled } from './_shared';
 import { scrapeRequestSchema, type ScrapeResult, type ScrapeWorker } from '../types';
 
 interface Listing {
@@ -57,6 +58,17 @@ export const seminuevosWorker: ScrapeWorker<MarketParsed> = {
       return await withPage<ScrapeResult<MarketParsed>>(async (page) => {
         await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 25_000 });
         await page.waitForTimeout(2000);
+
+        const pageText = await page.locator('body').innerText({ timeout: 6000 }).catch(() => '');
+        if (isBotWalled(page.url(), pageText)) {
+          return {
+            status: 'partial',
+            errorCode: 'site_blocked',
+            errorMessage: 'Seminuevos bot-walls datacenter IPs — needs residential proxy',
+            parsedData: { data_available: false, listing_count: 0, listings: [], searched_for: { make, model: extras.model, year: extras.year } },
+            costUsd: 0.02,
+          };
+        }
 
         const cards = await page
           .locator('article, .listing, [class*="card"], [class*="result"], a[href*="/autos-usados/"]')

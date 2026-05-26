@@ -1,6 +1,7 @@
 import { withPage } from '../../lib/browser-pool';
 import { logger } from '../../lib/logger';
 import { resolveVehicle } from '../../lib/vin';
+import { isBotWalled } from './_shared';
 import { scrapeRequestSchema, type ScrapeResult, type ScrapeWorker } from '../types';
 
 interface Listing {
@@ -46,15 +47,27 @@ export const autocosmosWorker: ScrapeWorker<MarketParsed> = {
       };
     }
 
-    const queryParts = [make, extras.model, extras.year ? String(extras.year) : undefined].filter(
-      Boolean,
-    ) as string[];
-    const searchUrl = `${AUTOCOSMOS_BASE}/auto/usado?q=${encodeURIComponent(queryParts.join(' '))}`;
+    // Autocosmos browses used listings by path: /auto/usado/<make>/<model> (slugged).
+    const slug = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const pathParts = ['auto', 'usado', slug(make)];
+    if (extras.model) pathParts.push(slug(extras.model));
+    const searchUrl = `${AUTOCOSMOS_BASE}/${pathParts.join('/')}`;
 
     try {
       return await withPage<ScrapeResult<MarketParsed>>(async (page) => {
         await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 25_000 });
         await page.waitForTimeout(2000);
+
+        const pageText = await page.locator('body').innerText({ timeout: 6000 }).catch(() => '');
+        if (isBotWalled(page.url(), pageText)) {
+          return {
+            status: 'partial',
+            errorCode: 'site_blocked',
+            errorMessage: 'Autocosmos bot-walls datacenter IPs — needs residential proxy',
+            parsedData: { data_available: false, listing_count: 0, listings: [], searched_for: { make, model: extras.model, year: extras.year } },
+            costUsd: 0.02,
+          };
+        }
 
         const cards = await page
           .locator('article, .listing, [class*="card"], [class*="result"], a[href*="/auto/usado/"]')
