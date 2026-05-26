@@ -177,6 +177,19 @@ Leyenda: ✅ funciona · 🟡 pipeline ok / falta validar dato real · 🔧 en p
 
 ## 11. Diario de hallazgos (test → save)
 
+### 2026-05-25 (sesión 2/3) — autocosmos REAL ✅, factory captcha, REPUVE proveedores
+
+- **mkt_mx_autocosmos** ✅ DATO REAL: 48 listings, $140k-$1.38M, avg $708k para el Ford Lobo. Selectores
+  `.listing-card` + `itemprop=price content` (precio exacto). Mapa nombres US→MX (F-150→Lobo) en el worker.
+- **State factory** ahora con soporte de captcha (reCAPTCHA invisible/v2 + imagen via 2captcha +
+  `injectRecaptchaToken` compartido), `cfg.proxy`, `cfg.fullVin`. Listo para configurar los 30 estados
+  restantes (necesitan: URL real de consulta + tipo de captcha + placa de prueba por estado para validar).
+- **seminuevos**: bot-protegido (curl→0 bytes; Playwright carga pero selectores pendientes). Baja prioridad
+  (autocosmos ya cubre comparables de precio).
+- **REPUVE — vía proveedor** (scraping intratable): no hay API pública de developers. Opciones para el user:
+  **CARFAX MX** (carfax.mx, tiene datos REPUVE), servicios de consulta por query, o **convenio oficial** con
+  REPUVE/SESNSP (el user dijo tener convenios). Decisión de pago/convenio del user.
+
 ### 2026-05-25 (sesión 2) — Markets honestos + hallazgo nombres US/MX
 
 - **4 marketplaces** ahora HONESTOS (`market/_shared.isBotWalled`): ML y Kavak redirigen los IPs
