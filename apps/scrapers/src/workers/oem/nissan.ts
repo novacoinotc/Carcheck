@@ -6,4 +6,5 @@ export const nissanRecallWorker = makeOemRecallWorker({
   url: 'https://owners.nissanusa.com/nowners/vinlookup/vinlookupresults',
   makes: ['NISSAN', 'INFINITI'],
   vinQueryParam: 'vin',
+  proxy: 'residential',
 });

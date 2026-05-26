@@ -118,7 +118,7 @@ export const seminuevosWorker: ScrapeWorker<MarketParsed> = {
           ],
           costUsd: 0.02,
         };
-      });
+      }, { proxy: 'residential' });
     } catch (err) {
       logger.error({ err }, 'seminuevos: scrape failed');
       return {

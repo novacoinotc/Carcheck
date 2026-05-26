@@ -5,4 +5,5 @@ export const stellantisRecallWorker = makeOemRecallWorker({
   key: 'oem_stellantis',
   url: 'https://www.mopar.com/en-us/care/recall-info.html',
   makes: ['JEEP', 'RAM', 'DODGE', 'CHRYSLER', 'FIAT'],
+  proxy: 'residential',
 });

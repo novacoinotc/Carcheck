@@ -136,7 +136,7 @@ export interface OemWorkerConfig {
   makes: string[];
   /** Some portals take the VIN as a query param instead of a form field. */
   vinQueryParam?: string;
-  proxy?: 'always' | 'auto' | 'off';
+  proxy?: 'always' | 'auto' | 'off' | 'residential';
 }
 
 /**

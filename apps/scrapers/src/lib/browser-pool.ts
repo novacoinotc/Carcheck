@@ -27,8 +27,12 @@ const LAUNCH_ARGS = [
 ];
 
 export interface PageRunOptions {
-  /** 'always' routes through the configured proxy; 'auto' uses it only if configured. */
-  proxy?: 'always' | 'auto' | 'off';
+  /**
+   * 'always'/'auto' route through the datacenter proxy pool; 'residential' uses
+   * the residential pool (for CDN/bot-walled sites — ANAM, marketplaces, OEM CDN);
+   * 'off' connects directly.
+   */
+  proxy?: 'always' | 'auto' | 'off' | 'residential';
   userAgent?: string;
   locale?: string;
   timezoneId?: string;
@@ -51,25 +55,39 @@ const DEFAULT_USER_AGENT =
  *
  * Legacy BRIGHTDATA_* vars are still honored as a fallback.
  */
-let _proxyList: string[] | null = null;
+const _proxyListCache: Record<string, string[]> = {};
 
-function getProxyList(): string[] {
-  if (_proxyList) return _proxyList;
-  const raw = process.env.PROXY_LIST ?? '';
-  _proxyList = raw
+function parseList(raw: string): string[] {
+  return raw
     .split(/[,\n]/)
     .map((s) => s.trim())
     .filter((s) => /^[\w.-]+:\d+$/.test(s));
-  return _proxyList;
 }
 
-function proxyConfig(): { server: string; username?: string; password?: string } | undefined {
+function getProxyList(envVar: string): string[] {
+  if (_proxyListCache[envVar]) return _proxyListCache[envVar]!;
+  _proxyListCache[envVar] = parseList(process.env[envVar] ?? '');
+  return _proxyListCache[envVar]!;
+}
+
+type ProxyPool = 'datacenter' | 'residential';
+
+function proxyConfig(pool: ProxyPool = 'datacenter'): { server: string; username?: string; password?: string } | undefined {
+  if (pool === 'residential') {
+    const username = process.env.RESIDENTIAL_PROXY_USERNAME;
+    const password = process.env.RESIDENTIAL_PROXY_PASSWORD;
+    const list = getProxyList('RESIDENTIAL_PROXY_LIST');
+    if (!username || list.length === 0) return undefined;
+    const pick = list[Math.floor(Math.random() * list.length)]!;
+    return { server: `http://${pick}`, username, password };
+  }
+
   const username = process.env.PROXY_USERNAME ?? process.env.BRIGHTDATA_USERNAME;
   const password = process.env.PROXY_PASSWORD ?? process.env.BRIGHTDATA_PASSWORD;
   // Auth is required — an auth-less proxy endpoint hangs the connection. Direct otherwise.
   if (!username) return undefined;
 
-  const list = getProxyList();
+  const list = getProxyList('PROXY_LIST');
   if (list.length > 0) {
     const pick = list[Math.floor(Math.random() * list.length)]!;
     return { server: `http://${pick}`, username, password };
@@ -88,6 +106,10 @@ export function isProxyConfigured(): boolean {
   return Boolean(proxyConfig());
 }
 
+export function isResidentialConfigured(): boolean {
+  return Boolean(proxyConfig('residential'));
+}
+
 export async function withPage<T>(
   fn: (page: Page) => Promise<T>,
   options: PageRunOptions = {},
@@ -96,8 +118,14 @@ export async function withPage<T>(
     let browser: Browser | null = null;
     let context: BrowserContext | null = null;
     try {
-      const wantsProxy = options.proxy === 'always' || (options.proxy ?? 'auto') === 'auto';
-      const proxy = wantsProxy && options.proxy !== 'off' ? proxyConfig() : undefined;
+      const mode = options.proxy ?? 'auto';
+      let proxy: ReturnType<typeof proxyConfig> | undefined;
+      if (mode === 'residential') {
+        // Fall back to datacenter if residential isn't configured yet.
+        proxy = proxyConfig('residential') ?? proxyConfig('datacenter');
+      } else if (mode === 'always' || mode === 'auto') {
+        proxy = proxyConfig('datacenter');
+      }
 
       browser = await chromium.launch({
         headless: true,

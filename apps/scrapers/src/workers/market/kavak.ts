@@ -116,7 +116,7 @@ export const kavakWorker: ScrapeWorker<MarketParsed> = {
           ],
           costUsd: 0.02,
         };
-      });
+      }, { proxy: 'residential' });
     } catch (err) {
       logger.error({ err }, 'kavak: scrape failed');
       return {

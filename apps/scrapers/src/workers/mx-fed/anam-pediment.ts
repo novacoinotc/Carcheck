@@ -123,7 +123,7 @@ export const anamPedimentWorker: ScrapeWorker<AnamPedimentParsed> = {
           ],
           costUsd: 0,
         };
-      });
+      }, { proxy: 'residential' });
     } catch (err) {
       logger.error({ err }, 'anam-pediment: scrape failed');
       return {

@@ -56,6 +56,7 @@ export const mercadolibreWorker: ScrapeWorker<MarketParsed> = {
       return await withPage<ScrapeResult<MarketParsed>>(async (page) => {
         await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 25_000 });
         await page.waitForTimeout(2000);
+        /* residential proxy: ML bot-walls datacenter IPs */
 
         const pageText = await page.locator('body').innerText({ timeout: 6000 }).catch(() => '');
         if (isBotWalled(page.url(), pageText)) {
@@ -122,7 +123,7 @@ export const mercadolibreWorker: ScrapeWorker<MarketParsed> = {
           ],
           costUsd: 0.02,
         };
-      });
+      }, { proxy: 'residential' });
     } catch (err) {
       logger.error({ err }, 'mercadolibre: scrape failed');
       return {

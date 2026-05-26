@@ -114,7 +114,7 @@ export const anamRegularizacionWorker: ScrapeWorker<AnamRegularizacionParsed> = 
             costUsd: 0,
           };
         },
-        { proxy: 'always' },
+        { proxy: 'residential' },
       );
     } catch (err) {
       logger.error({ err }, 'anam-regularizacion: scrape failed');

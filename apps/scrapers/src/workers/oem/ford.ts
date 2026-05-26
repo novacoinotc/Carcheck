@@ -5,4 +5,5 @@ export const fordRecallWorker = makeOemRecallWorker({
   key: 'oem_ford',
   url: 'https://www.ford.com/support/recalls/',
   makes: ['FORD', 'LINCOLN'],
+  proxy: 'residential',
 });
