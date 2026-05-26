@@ -1,3 +1,4 @@
+import type { Page } from 'playwright';
 import { logger } from './logger.js';
 
 const TWOCAPTCHA_KEY = process.env.TWOCAPTCHA_API_KEY;
@@ -45,6 +46,55 @@ export async function solveReCaptchaV2(input: ReCaptchaV2Input): Promise<string>
     }
   }
   throw new Error('2captcha timeout after 120s');
+}
+
+/**
+ * Inject a solved reCAPTCHA token into a page and best-effort fire the widget's
+ * callback + override getResponse, so SPAs that read the token via either path
+ * accept it. Bounded walk of ___grecaptcha_cfg (it has circular refs). Shared by
+ * REPUVE, Jalisco and the state-portal factory.
+ */
+export async function injectRecaptchaToken(page: Page, token: string): Promise<void> {
+  await page.evaluate((t) => {
+    document
+      .querySelectorAll<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"], #g-recaptcha-response')
+      .forEach((el) => {
+        el.value = t;
+        el.style.display = 'block';
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    try {
+      const cfg = (window as unknown as { ___grecaptcha_cfg?: { clients?: Record<string, unknown> } }).___grecaptcha_cfg;
+      const clients = cfg?.clients ?? {};
+      for (const client of Object.values(clients)) {
+        if (!client || typeof client !== 'object') continue;
+        for (const val of Object.values(client as Record<string, unknown>)) {
+          if (!val || typeof val !== 'object') continue;
+          for (const maybe of Object.values(val as Record<string, unknown>)) {
+            const cb = (maybe as { callback?: unknown })?.callback;
+            if (typeof cb === 'function') {
+              try {
+                (cb as (tok: string) => void)(t);
+              } catch {
+                /* ignore */
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      const g = (window as unknown as { grecaptcha?: { getResponse?: unknown; enterprise?: { getResponse?: unknown } } }).grecaptcha;
+      if (g) {
+        g.getResponse = () => t;
+        if (g.enterprise) g.enterprise.getResponse = () => t;
+      }
+    } catch {
+      /* ignore */
+    }
+  }, token);
 }
 
 export interface ImageCaptchaInput {

@@ -1,6 +1,7 @@
 import type { Frame, Page } from 'playwright';
 import { withPage } from '../../lib/browser-pool';
 import { logger } from '../../lib/logger';
+import { solveReCaptchaV2, solveImageCaptcha, injectRecaptchaToken } from '../../lib/captcha';
 import { scrapeRequestSchema, type ScrapeResult, type ScrapeWorker } from '../types';
 
 /**
@@ -44,6 +45,20 @@ export interface MxStateConfig {
   needsVin?: boolean;
   /** How many trailing VIN characters the form expects (4 or 5). Default 5. */
   vinDigits?: number;
+  /** Per-portal proxy strategy. Many gob.mx sites time out via datacenter proxy → 'off'. Default 'always'. */
+  proxy?: 'always' | 'auto' | 'off';
+  /** Send the full VIN as the serie field instead of just the trailing digits. */
+  fullVin?: boolean;
+  /** CAPTCHA on the portal, if any. Solved via 2captcha before submit. */
+  captcha?: {
+    type: 'recaptcha_invisible' | 'recaptcha_v2' | 'image';
+    /** reCAPTCHA site key; if omitted, read from the page's widget. */
+    sitekey?: string;
+    /** Image captcha: selector for the <img> to screenshot. */
+    imageSelector?: string;
+    /** Image captcha: selector for the answer text input. */
+    inputSelector?: string;
+  };
 }
 
 /** Field/selector candidates for the plate input, ordered most → least specific. */
@@ -281,6 +296,36 @@ async function readResultText(page: Page): Promise<string> {
   return best;
 }
 
+/** Solve the portal's CAPTCHA (if configured) before submit. No-op when none. */
+async function solveCaptcha(page: Page, cfg: MxStateConfig): Promise<void> {
+  if (!cfg.captcha) return;
+  if (cfg.captcha.type === 'image') {
+    const img = page.locator(cfg.captcha.imageSelector ?? 'img[src*="captcha" i], img[id*="captcha" i]').first();
+    await img.waitFor({ state: 'visible', timeout: 8_000 }).catch(() => undefined);
+    const shot = await img.screenshot().catch(() => null);
+    if (shot) {
+      const answer = await solveImageCaptcha({ base64: shot.toString('base64') });
+      await page
+        .locator(cfg.captcha.inputSelector ?? 'input[name*="captcha" i], input[id*="captcha" i]')
+        .first()
+        .fill(answer)
+        .catch(() => undefined);
+    }
+    return;
+  }
+  // reCAPTCHA v2 / invisible: read sitekey (config or page), solve, inject.
+  const siteKey =
+    cfg.captcha.sitekey ||
+    (await page.evaluate(() => {
+      const ifr = document.querySelector('iframe[src*="recaptcha"]') as HTMLIFrameElement | null;
+      const m = ifr ? /[?&]k=([^&]+)/.exec(ifr.src) : null;
+      return m?.[1] ?? document.querySelector('[data-sitekey]')?.getAttribute('data-sitekey') ?? '';
+    }).catch(() => ''));
+  if (!siteKey) return;
+  const token = await solveReCaptchaV2({ siteKey, pageUrl: cfg.url, invisible: cfg.captcha.type === 'recaptcha_invisible' });
+  await injectRecaptchaToken(page, token);
+}
+
 /**
  * Factory: turns a per-state config into a fully-formed `ScrapeWorker`.
  * Handles input validation, navigation, defensive form fill, submit, parse,
@@ -318,7 +363,11 @@ export function makeMxStateWorker(cfg: MxStateConfig): ScrapeWorker<MxStateParse
             errorMessage: `${cfg.stateCode} portal requires the last ${vinDigits} of the VIN`,
           };
         }
-        vinPart = vin.slice(-vinDigits);
+        vinPart = cfg.fullVin ? vin : vin.slice(-vinDigits);
+      }
+
+      if (cfg.captcha && !process.env.TWOCAPTCHA_API_KEY) {
+        return { status: 'skipped', errorCode: 'captcha_unconfigured', errorMessage: `${cfg.stateCode} portal needs a CAPTCHA solver; TWOCAPTCHA_API_KEY not set` };
       }
 
       try {
@@ -326,8 +375,9 @@ export function makeMxStateWorker(cfg: MxStateConfig): ScrapeWorker<MxStateParse
           async (page) => {
             await page.goto(cfg.url, { waitUntil: 'domcontentloaded', timeout: 25_000 });
             await fillForm(page, plate, vinPart);
+            await solveCaptcha(page, cfg);
             await submitForm(page);
-            await page.waitForTimeout(2_000);
+            await page.waitForTimeout(2_500);
 
             const bodyText = await readResultText(page);
             if (!bodyText.trim()) {
@@ -348,7 +398,7 @@ export function makeMxStateWorker(cfg: MxStateConfig): ScrapeWorker<MxStateParse
 
             return parseStateBody(bodyText, cfg, plate, vinPart);
           },
-          { proxy: 'always' },
+          { proxy: cfg.proxy ?? 'always' },
         );
       } catch (err) {
         logger.error({ err, key: cfg.key }, 'mx-state: scrape failed');
