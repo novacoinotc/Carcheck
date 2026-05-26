@@ -177,6 +177,25 @@ Leyenda: ✅ funciona · 🟡 pipeline ok / falta validar dato real · 🔧 en p
 
 ## 11. Diario de hallazgos (test → save)
 
+### 2026-05-25 (sesión 3) — Proxy RESIDENCIAL: código listo, falta auth Webshare
+
+User activó 20 proxies STATIC RESIDENTIAL en Webshare (user `ynrfywjxstaticresident`, pass igual al
+datacenter). Implementado pool residencial separado:
+- `browser-pool.ts`: env `RESIDENTIAL_PROXY_{LIST,USERNAME,PASSWORD}`, opción `proxy:'residential'`
+  (pool separado; cae a datacenter si no está configurado). `isResidentialConfigured()`.
+- Ruteadas a residencial: ANAM ×2 (pediment/regularización), markets ML/Kavak/seminuevos,
+  OEM-CDN ford/gm/nissan/stellantis (suplemento de portal). 18 IPs en el env del box.
+- **BLOQUEO actual (lado Webshare del user)**: el proxy residencial responde **HTTP 407 "Invalid proxy
+  credentials or missing IP Authorization"**. El datacenter SÍ funciona desde el mismo box
+  (IP outbound `159.223.179.79`) con user `ynrfywjx` → el password es correcto y el IP del box no es
+  el problema para datacenter. El residencial rechaza `ynrfywjxstaticresident`.
+  **ACCIÓN DEL USER**: en Webshare → producto Static Residential: (1) agregar IP `159.223.179.79` a
+  "IP Authorization", y/o (2) verificar el username/password exactos del residencial (usar el botón
+  **Download** de la lista para evitar truncado del username en la tabla). Cuando auth funcione, ANAM/
+  markets/OEM-CDN rutean solos (código ya desplegado).
+- **VinAudit**: registro enviado en vinaudit.com, API key llega por email (pendiente). Configurar
+  `VINAUDIT_API_KEY` en Vercel cuando llegue → desbloquea NMVTIS (robo/salvage/título/odómetro US) + market value.
+
 ### 2026-05-25 (sesión 2/3) — autocosmos REAL ✅, factory captcha, REPUVE proveedores
 
 - **mkt_mx_autocosmos** ✅ DATO REAL: 48 listings, $140k-$1.38M, avg $708k para el Ford Lobo. Selectores
