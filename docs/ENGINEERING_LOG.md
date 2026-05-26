@@ -185,14 +185,21 @@ datacenter). Implementado pool residencial separado:
   (pool separado; cae a datacenter si no está configurado). `isResidentialConfigured()`.
 - Ruteadas a residencial: ANAM ×2 (pediment/regularización), markets ML/Kavak/seminuevos,
   OEM-CDN ford/gm/nissan/stellantis (suplemento de portal). 18 IPs en el env del box.
-- **BLOQUEO actual (lado Webshare del user)**: el proxy residencial responde **HTTP 407 "Invalid proxy
-  credentials or missing IP Authorization"**. El datacenter SÍ funciona desde el mismo box
-  (IP outbound `159.223.179.79`) con user `ynrfywjx` → el password es correcto y el IP del box no es
-  el problema para datacenter. El residencial rechaza `ynrfywjxstaticresident`.
-  **ACCIÓN DEL USER**: en Webshare → producto Static Residential: (1) agregar IP `159.223.179.79` a
-  "IP Authorization", y/o (2) verificar el username/password exactos del residencial (usar el botón
-  **Download** de la lista para evitar truncado del username en la tabla). Cuando auth funcione, ANAM/
-  markets/OEM-CDN rutean solos (código ya desplegado).
+- **RESUELTO**: el residencial usa **IP Authorization** (NO username/password). El user autorizó la IP
+  del box `159.223.179.79` en Webshare. browser-pool ahora omite credenciales para residencial (mandar
+  user/pass daba 407). Verificado: curl vía residencial devuelve la IP del proxy. ⚠️ Quitar
+  RESIDENTIAL_PROXY_USERNAME/PASSWORD del env (IP auth no los usa). Plan soporta **1 IP autorizada**.
+- **RESULTADO HONESTO del residencial**: activarlo NO desbloqueó tanto como se esperaba porque las
+  fuentes CDN tienen OTROS bloqueos, no de IP:
+  - **ANAM**: bloquea Chromium headless a nivel **TLS fingerprint** (curl carga en 11s, Chromium da
+    ERR_EMPTY_RESPONSE con HTTP/1.1 y ERR_HTTP2_PROTOCOL_ERROR con HTTP/2, da igual proxy o directo).
+    Necesita stealth/evasión de fingerprint o RE del API SOIA. DIFERIDO.
+  - **MercadoLibre**: redirige a login/account-verification SIEMPRE (cambio de producto de ML, no es IP).
+    Necesita sesión logueada. Honest site_blocked.
+  - **Kavak/seminuevos**: Cloudflare/JS pesado. Algunos IPs "residenciales" de Webshare son rango
+    datacenter (9.142.x.x = IBM) → ML los detecta igual.
+  - El residencial SÍ servirá para cualquier fuente bloqueada puramente por reputación de IP datacenter.
+- **autocosmos**: cambiado a DIRECTO (el proxy datacenter lo rate-limiteó tras mis pruebas). 48 listings OK.
 - **VinAudit**: registro enviado en vinaudit.com, API key llega por email (pendiente). Configurar
   `VINAUDIT_API_KEY` en Vercel cuando llegue → desbloquea NMVTIS (robo/salvage/título/odómetro US) + market value.
 
