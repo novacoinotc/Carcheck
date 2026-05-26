@@ -23,6 +23,19 @@ interface MarketParsed {
 
 const AUTOCOSMOS_BASE = 'https://www.autocosmos.com.mx';
 
+// US (NHTSA) model names differ from MX commercial names. Map the common renames
+// so the MX marketplace URL resolves (e.g. Ford F-150 is sold as "Lobo" in Mexico).
+const US_TO_MX_MODEL: Record<string, string> = {
+  'f-150': 'lobo',
+  f150: 'lobo',
+  'f-250': 'f-250-super-duty',
+  ranger: 'ranger',
+  'cr-v': 'cr-v',
+  'hr-v': 'hr-v',
+  versa: 'versa',
+  sentra: 'sentra',
+};
+
 function parsePriceMxn(text: string): number | undefined {
   const m = /\$?\s*([\d.,]{4,})/.exec(text.replace(/\s+/g, ''));
   if (!m || !m[1]) return undefined;
@@ -47,10 +60,14 @@ export const autocosmosWorker: ScrapeWorker<MarketParsed> = {
       };
     }
 
-    // Autocosmos browses used listings by path: /auto/usado/<make>/<model> (slugged).
+    // Autocosmos browses used listings by path: /auto/usado/<make>/<model> (slugged,
+    // MX commercial model name).
     const slug = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     const pathParts = ['auto', 'usado', slug(make)];
-    if (extras.model) pathParts.push(slug(extras.model));
+    if (extras.model) {
+      const mslug = slug(extras.model);
+      pathParts.push(US_TO_MX_MODEL[mslug] ?? mslug);
+    }
     const searchUrl = `${AUTOCOSMOS_BASE}/${pathParts.join('/')}`;
 
     try {
@@ -69,20 +86,30 @@ export const autocosmosWorker: ScrapeWorker<MarketParsed> = {
           };
         }
 
-        const cards = await page
-          .locator('article, .listing, [class*="card"], [class*="result"], a[href*="/auto/usado/"]')
-          .all();
+        // Individual used listings render as .listing-card with an itemprop="price"
+        // value carrying the exact integer price in its `content` attribute.
+        const cards = await page.locator('.listing-card').all();
 
         const listings: Listing[] = [];
         for (const card of cards.slice(0, 50)) {
-          const text = (await card.innerText().catch(() => '')).trim();
-          if (!text || text.length < 10) continue;
-          const price_mxn = parsePriceMxn(text);
+          const priceContent = await card
+            .locator('.listing-card__price-value[itemprop="price"], [itemprop="price"]')
+            .first()
+            .getAttribute('content')
+            .catch(() => null);
+          let price_mxn = priceContent ? Number(priceContent) : undefined;
+          if (!price_mxn || !Number.isFinite(price_mxn)) {
+            const ptext = await card.locator('.listing-card__price-value, [class*="price"]').first().innerText().catch(() => '');
+            price_mxn = parsePriceMxn(ptext);
+          }
+          const title = (await card.locator('.listing-card__car, .listing-card__brand').first().innerText().catch(() => '')).trim();
           const url = await card.locator('a').first().getAttribute('href').catch(() => null);
-          const yearMatch = /\b(19|20)\d{2}\b/.exec(text);
+          const yearText = await card.innerText().catch(() => '');
+          const yearMatch = /\b(19|20)\d{2}\b/.exec(yearText);
+          if (!price_mxn && !title) continue;
           listings.push({
-            title: text.split('\n')[0]?.slice(0, 120),
-            price_mxn,
+            title: title.slice(0, 120) || undefined,
+            price_mxn: price_mxn && Number.isFinite(price_mxn) ? price_mxn : undefined,
             year: yearMatch ? Number(yearMatch[0]) : undefined,
             url: url ?? undefined,
           });
