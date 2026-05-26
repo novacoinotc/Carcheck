@@ -43,6 +43,21 @@ export async function decodeVin(vin: string): Promise<DecodedVin | null> {
   }
 }
 
+/**
+ * Resolve make/model/year for a request: prefer orchestrator-supplied values,
+ * else decode the VIN (NHTSA vPIC). Lets make/model-indexed workers (markets,
+ * PROFECO, EPA) be self-sufficient even when the schema strips extra fields.
+ */
+export async function resolveVehicle(input: unknown): Promise<{ make?: string; model?: string; year?: number }> {
+  const raw = (input ?? {}) as { vin?: string; make?: string; model?: string; year?: number };
+  if (raw.make) return { make: raw.make, model: raw.model, year: raw.year };
+  if (raw.vin) {
+    const d = await decodeVin(raw.vin);
+    if (d) return { make: d.make, model: d.model, year: d.year ? Number(d.year) : undefined };
+  }
+  return {};
+}
+
 export interface NhtsaRecall {
   campaign: string;
   component: string;

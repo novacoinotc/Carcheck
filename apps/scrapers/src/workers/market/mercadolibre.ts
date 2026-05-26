@@ -1,5 +1,6 @@
 import { withPage } from '../../lib/browser-pool';
 import { logger } from '../../lib/logger';
+import { resolveVehicle } from '../../lib/vin';
 import { scrapeRequestSchema, type ScrapeResult, type ScrapeWorker } from '../types';
 
 interface Listing {
@@ -35,7 +36,7 @@ export const mercadolibreWorker: ScrapeWorker<MarketParsed> = {
     if (!parsed.success) {
       return { status: 'failed', errorCode: 'invalid_input', errorMessage: parsed.error.message };
     }
-    const extras = parsed.data as { make?: string; model?: string; year?: number };
+    const extras = await resolveVehicle(input);
     const make = extras.make;
     if (!make) {
       return {
