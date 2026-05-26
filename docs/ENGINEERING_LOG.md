@@ -6,6 +6,32 @@
 
 ---
 
+## 0. ⚡ HANDOFF — LEE ESTO PRIMERO Y EJECUTA (para conversación nueva)
+
+**Estado**: plataforma 100% construida y LIVE. Falta: hacer funcionar las 66 fuentes scraper, 1×1.
+**Directiva del owner**: que las 66 funcionen. Ir una por una, sin poner peros, ejecutar y guardar avance aquí tras cada una.
+
+**Cómo trabajar (loop probado, ~10s/iteración con hot-reload):**
+1. `ssh -i ~/.ssh/carcheck_do root@159.223.179.79` · `curl localhost:8080/health` (debe dar ok).
+   Si el contenedor no está en modo dev: `cd /opt/carcheck/deploy && set -a && source scrapers.env && set +a && docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`
+2. Tomar la siguiente fuente del backlog (sección 6 + sweep sección 11). Empezar por las **scrapeables fáciles** (LOADS_DIRECT_FORM/PROXY_FORM sin captcha) para wins rápidos; las CAPTCHA con 2captcha; dejar al final las CDN-blocked (necesitan residencial) y REPUVE/OCRA-class.
+3. Inspeccionar el sitio real para hallar el FORM real (ojo: las baseUrl del registro suelen ser LANDINGS, el form está más adentro):
+   `curl -X POST -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"url":"<URL>","proxy":false}' http://localhost:8080/inspect`  (TOK abajo)
+4. Editar el worker en `apps/scrapers/src/workers/...`, `rsync` el src (tsx recarga solo), probar contra el sitio real.
+5. **GUARDAR el resultado en sección 11 (diario) + commit.** Actualizar el estado de la fuente en sección 6.
+6. Para producción estable tras un lote: `ssh ... 'cd /opt/carcheck/deploy && docker compose up -d --build'`.
+
+**TOK** (scrapers auth, = SCRAPERS_AUTH_TOKEN en Vercel): `LRME62_NAP24y4X-wWw3bTpnvZ6glzRPjKa6VUzN7-Q`
+**Placa real para validar** (federales/Jalisco): `JY53245` · VIN `1FTEW1E85NFC18609` (Ford Lobo 2022 importado).
+
+**Decisiones del owner ya tomadas**: scraping agresivo OK (tiene convenios); quiere las 66; no hay prisa; "organízate como prefieras pero resuélvelo". NUNCA exponer nombre del propietario (LFPDPPP).
+
+**Pendiente del owner (desbloquea ~15-20 fuentes sin scraping)**: VinAudit API key, Webshare proxies residenciales, API keys US (MarketCheck/AutoCheck/etc.), convenios (OCRA/AMIS, Buró). Para REPUVE: evaluar proveedor de datos (ver sección 11, es intratable por scraping).
+
+**Próxima fuente sugerida para arrancar**: una LOADS_DIRECT_FORM/PROXY_FORM sin captcha (ej. mkt_mx_autocosmos, mkt_mx_kavak, usa_st_ca_smogcheck, oem_honda) — cerrar 1 completa como modelo, luego seguir.
+
+---
+
 ## 1. Qué es CarCheck
 
 Plataforma de auditoría vehicular para México + US (tipo Carfax pero más completa + IA).
