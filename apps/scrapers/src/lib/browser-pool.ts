@@ -21,7 +21,8 @@ const LAUNCH_ARGS = [
   '--disable-sync',
   '--no-first-run',
   // HTTP proxies (Webshare) break Chromium's HTTP/2 negotiation → ERR_HTTP2_PROTOCOL_ERROR.
-  // Force HTTP/1.1 so proxied requests work and don't hang on failed h2 handshakes.
+  // Force HTTP/1.1 globally — proven for REPUVE/Jalisco/markets. (Reverted a per-proxy
+  // variant: it didn't help anam.gob.mx, which TLS-fingerprint-blocks Chromium either way.)
   '--disable-http2',
   '--js-flags=--max-old-space-size=512',
 ];
@@ -74,12 +75,14 @@ type ProxyPool = 'datacenter' | 'residential';
 
 function proxyConfig(pool: ProxyPool = 'datacenter'): { server: string; username?: string; password?: string } | undefined {
   if (pool === 'residential') {
+    const list = getProxyList('RESIDENTIAL_PROXY_LIST');
+    if (list.length === 0) return undefined;
+    const pick = list[Math.floor(Math.random() * list.length)]!;
+    // IP-authorized residential proxies take NO credentials (sending them → 407).
+    // Only attach user/pass if explicitly configured for user/pass auth.
     const username = process.env.RESIDENTIAL_PROXY_USERNAME;
     const password = process.env.RESIDENTIAL_PROXY_PASSWORD;
-    const list = getProxyList('RESIDENTIAL_PROXY_LIST');
-    if (!username || list.length === 0) return undefined;
-    const pick = list[Math.floor(Math.random() * list.length)]!;
-    return { server: `http://${pick}`, username, password };
+    return username ? { server: `http://${pick}`, username, password } : { server: `http://${pick}` };
   }
 
   const username = process.env.PROXY_USERNAME ?? process.env.BRIGHTDATA_USERNAME;

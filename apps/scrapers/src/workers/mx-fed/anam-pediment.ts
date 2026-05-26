@@ -38,7 +38,11 @@ export const anamPedimentWorker: ScrapeWorker<AnamPedimentParsed> = {
 
     try {
       return await withPage<ScrapeResult<AnamPedimentParsed>>(async (page) => {
-        await page.goto(ANAM_URL, { waitUntil: 'domcontentloaded', timeout: 25_000 });
+        // anam.gob.mx is a heavy WP page (~11s); 'commit' returns once navigation
+        // starts and we then wait for the actual NIV input, instead of timing out
+        // waiting for full domcontentloaded.
+        await page.goto(ANAM_URL, { waitUntil: 'commit', timeout: 45_000 });
+        await page.waitForTimeout(4000);
 
         // ANAM widget is an iframe; navigate inside if present.
         const frame = page.frames().find((f) => /soia|anam/i.test(f.url())) ?? page.mainFrame();
@@ -123,7 +127,7 @@ export const anamPedimentWorker: ScrapeWorker<AnamPedimentParsed> = {
           ],
           costUsd: 0,
         };
-      }, { proxy: 'residential' });
+      }, { proxy: 'off' });
     } catch (err) {
       logger.error({ err }, 'anam-pediment: scrape failed');
       return {

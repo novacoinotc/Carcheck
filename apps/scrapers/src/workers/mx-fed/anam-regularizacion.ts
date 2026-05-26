@@ -36,7 +36,8 @@ export const anamRegularizacionWorker: ScrapeWorker<AnamRegularizacionParsed> = 
     try {
       return await withPage<ScrapeResult<AnamRegularizacionParsed>>(
         async (page) => {
-          await page.goto(ANAM_REG_URL, { waitUntil: 'domcontentloaded', timeout: 25_000 });
+          await page.goto(ANAM_REG_URL, { waitUntil: 'commit', timeout: 45_000 });
+          await page.waitForTimeout(4000);
 
           // The regularización widget is typically an embedded iframe.
           const frame =
@@ -114,7 +115,7 @@ export const anamRegularizacionWorker: ScrapeWorker<AnamRegularizacionParsed> = 
             costUsd: 0,
           };
         },
-        { proxy: 'residential' },
+        { proxy: 'off' },
       );
     } catch (err) {
       logger.error({ err }, 'anam-regularizacion: scrape failed');

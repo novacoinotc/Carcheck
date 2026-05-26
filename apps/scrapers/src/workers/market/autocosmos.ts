@@ -144,7 +144,7 @@ export const autocosmosWorker: ScrapeWorker<MarketParsed> = {
           ],
           costUsd: 0.02,
         };
-      });
+      }, { proxy: 'off' });
     } catch (err) {
       logger.error({ err }, 'autocosmos: scrape failed');
       return {
