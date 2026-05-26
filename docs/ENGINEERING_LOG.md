@@ -177,6 +177,21 @@ Leyenda: ✅ funciona · 🟡 pipeline ok / falta validar dato real · 🔧 en p
 
 ## 11. Diario de hallazgos (test → save)
 
+### 2026-05-25 (sesión 2) — RESUMEN: ~26 fuentes resueltas/arregladas + 3 bugs sistémicos
+
+**Estado por categoría tras la sesión 2** (todo probado contra sitios reales, VIN Ford 1FTEW1E85NFC18609):
+- ✅ **Dato real**: NHTSA vpic, NHTSA recalls, 9 OEM (vía backbone NHTSA), EPA (fueleconomy.gov). = 12
+- ✅ **Pipeline OK, requiere input del user**: Jalisco (nº de motor de la tarjeta). Captcha invisible ACEPTADO.
+- ✅ **Honesto skipped (requiere API key del user)**: 10 clientes API (VinAudit, AutoCheck, MarketCheck, etc.)
+- ✅ **Corre + decodifica (falta tuning de selectores de precio)**: 4 markets (autocosmos/kavak/seminuevos/mercadolibre), PROFECO.
+- 🟡 **Honesto-bloqueado por captcha endurecido**: REPUVE (captcha_rejected), NICB (no_results_rendered).
+- ⏸ **Pendiente bespoke**: 31 estados restantes, RUG (URL nueva rug.economia.gob.mx/Rug/), ANAM (residencial),
+  AMDA (requiere folio, no aplica a VIN), 6 fiscalías, 4 verificación ambiental, Copart/IAA.
+
+**markets**: estaban 100% rotos (leían make de data Zod-stripeada → siempre make_required). Arreglado con
+`lib/vin.resolveVehicle` (decodifica VIN o usa make/model/year pasado). Ahora corren: seminuevos/mercadolibre
+success; kavak time-out (Cloudflare, necesita proxy/residencial); autocosmos lento. Falta afinar selectores de precio.
+
 ### 2026-05-25 (sesión 2) — MX: Jalisco pipeline ✅, REPUVE honesto, BUGS SISTÉMICOS críticos
 
 **🐛 BUG SISTÉMICO #1 (afectaba a TODOS los scrapers con captcha)**: el orquestador
