@@ -177,6 +177,18 @@ Leyenda: ✅ funciona · 🟡 pipeline ok / falta validar dato real · 🔧 en p
 
 ## 11. Diario de hallazgos (test → save)
 
+### 2026-05-25 (sesión 2) — Markets honestos + hallazgo nombres US/MX
+
+- **4 marketplaces** ahora HONESTOS (`market/_shared.isBotWalled`): ML y Kavak redirigen los IPs
+  datacenter a login/Cloudflare → antes contaban el chrome del login como "listings" (falso positivo);
+  ahora devuelven `partial`/`site_blocked` (necesitan **proxy residencial**). Verificado ML → site_blocked.
+- **autocosmos**: NO está walled (carga directo). Arreglada la URL a path real `/auto/usado/<marca>/<modelo>`
+  (antes `?q=` inválido → timeout). PERO: **hallazgo de nombres US↔MX**: NHTSA decodifica "F-150" pero
+  autocosmos usa "**Lobo**" (nombre comercial MX del F-150). Para comparables de precio MX se necesita un
+  mapa de nombres US→MX por modelo. Pendiente: selectores de tarjeta/precio + mapa de nombres.
+- **seminuevos**: carga (no walled), 0 listings (selectores/URL a afinar).
+- **Estado del box**: PROD mode reconstruido con TODOS los fixes baked in + healthy. Durable.
+
 ### 2026-05-25 (sesión 2) — ✅ PRUEBA END-TO-END EN PRODUCCIÓN (app.carcheckmx.com)
 
 Corrí el orquestador completo en vivo: `GET app.carcheckmx.com/api/reports/preview?vin=1FTEW1E85NFC18609`
