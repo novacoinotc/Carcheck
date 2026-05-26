@@ -1,17 +1,37 @@
-import { withPage } from '../../lib/browser-pool';
+import { decodeVin } from '../../lib/vin';
 import { logger } from '../../lib/logger';
 import { scrapeRequestSchema, type ScrapeResult, type ScrapeWorker } from '../types';
 
 interface EpaParsed {
   data_available: boolean;
-  cert_found: boolean;
-  searched_for: { make?: string; model?: string; year?: number };
-  certificates: Array<{ family?: string; manufacturer?: string; standard?: string }>;
-  raw_text?: string;
+  cert_found: boolean; // configuration exists in EPA's US-certified database
+  searched_for: { make?: string; model?: string; year?: string };
+  matched_model?: string;
+  fuel_economy?: { cityMpg?: number; highwayMpg?: number; combinedMpg?: number; co2GramsPerMile?: number; fuelType?: string };
+  raw?: unknown;
 }
 
-const EPA_URL = 'https://dis.epa.gov/otaqpub/';
+const FE = 'https://www.fueleconomy.gov/ws/rest';
 
+async function feJson(url: string): Promise<unknown> {
+  const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+function asArray<T>(v: T | T[] | undefined): T[] {
+  if (v == null) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
+const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/**
+ * EPA certification + emissions via fueleconomy.gov (free, no key). A vehicle
+ * config appearing in EPA's database means it was certified for US sale — useful
+ * for imported/chocolate vehicles — and yields real MPG/CO2 figures. Indexed by
+ * make/model/year, so we decode the VIN here (NHTSA vPIC) to drive the lookup.
+ */
 export const epaCertificationWorker: ScrapeWorker<EpaParsed> = {
   key: 'usa_fed_epa_certification',
   async run(input): Promise<ScrapeResult<EpaParsed>> {
@@ -19,121 +39,87 @@ export const epaCertificationWorker: ScrapeWorker<EpaParsed> = {
     if (!parsed.success) {
       return { status: 'failed', errorCode: 'invalid_input', errorMessage: parsed.error.message };
     }
-    // EPA certification is indexed by make/model/year, not VIN. The orchestrator
-    // passes decoded vehicle metadata alongside the query (same as PROFECO).
     const extras = (input ?? {}) as { make?: string; model?: string; year?: number };
-    const make = extras.make;
-    if (!make) {
+    const vin = parsed.data.vin;
+
+    let make = extras.make;
+    let model = extras.model;
+    let year = extras.year ? String(extras.year) : undefined;
+    if (vin && (!make || !model || !year)) {
+      const d = await decodeVin(vin);
+      if (d) {
+        make = make ?? d.make;
+        model = model ?? d.model;
+        year = year ?? d.year;
+      }
+    }
+    if (!make || !year) {
       return {
         status: 'not_applicable',
         errorCode: 'make_required',
-        errorMessage: 'EPA certification lookup needs decoded make/model/year',
+        errorMessage: 'EPA certification lookup needs make + year (VIN decode failed)',
       };
     }
 
     try {
-      return await withPage<ScrapeResult<EpaParsed>>(
-        async (page) => {
-          await page.goto(EPA_URL, { waitUntil: 'domcontentloaded', timeout: 25_000 });
+      // fueleconomy uses title-case makes ("Ford"); vPIC gives upper ("FORD").
+      const makeTc = make.charAt(0) + make.slice(1).toLowerCase();
+      const modelsResp = (await feJson(`${FE}/vehicle/menu/model?year=${year}&make=${encodeURIComponent(makeTc)}`)) as
+        | { menuItem?: Array<{ value: string }> | { value: string } }
+        | null;
+      const models = asArray(modelsResp?.menuItem).map((m) => m.value);
 
-          // Manufacturer / make search field.
-          const makeInput = page
-            .locator(
-              'input[name*="manufacturer" i], input[name*="make" i], input[id*="manufacturer" i], input[type="text"]',
-            )
-            .first();
-          if (await makeInput.count().catch(() => 0)) {
-            await makeInput.fill(make).catch(() => undefined);
-          }
+      const wantNorm = model ? norm(model) : '';
+      // Prefer the shortest matching name (base trim) over longer sub-variants,
+      // e.g. "F150 Pickup" before "F150 Lightning 4WD" for a decoded "F-150".
+      const candidates = wantNorm
+        ? models.filter((m) => norm(m).includes(wantNorm) || wantNorm.includes(norm(m)))
+        : [];
+      const matched = candidates.sort((a, b) => norm(a).length - norm(b).length)[0];
 
-          // Model year selector / field, if present.
-          if (extras.year) {
-            const yearField = page
-              .locator(
-                'input[name*="year" i], select[name*="year" i], input[id*="year" i], select[id*="year" i]',
-              )
-              .first();
-            if (await yearField.count().catch(() => 0)) {
-              const tag = await yearField
-                .evaluate((el) => el.tagName.toLowerCase())
-                .catch(() => 'input');
-              if (tag === 'select') {
-                await yearField.selectOption(String(extras.year)).catch(() => undefined);
-              } else {
-                await yearField.fill(String(extras.year)).catch(() => undefined);
-              }
-            }
-          }
+      if (!matched) {
+        return {
+          status: 'success',
+          parsedData: { data_available: true, cert_found: false, searched_for: { make, model, year } },
+          normalizedFacts: [{ key: 'epa_us_certified', value: false, confidence: 70 }],
+          costUsd: 0,
+        };
+      }
 
-          const submit = page
-            .locator(
-              'button:has-text("Search"), button:has-text("Submit"), input[type="submit"], button[type="submit"]',
-            )
-            .first();
-          await Promise.all([
-            page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => undefined),
-            submit.click({ timeout: 10_000 }).catch(() => undefined),
-          ]);
-          await page.waitForTimeout(2500);
+      const optsResp = (await feJson(
+        `${FE}/vehicle/menu/options?year=${year}&make=${encodeURIComponent(makeTc)}&model=${encodeURIComponent(matched)}`,
+      )) as { menuItem?: Array<{ value: string }> | { value: string } } | null;
+      const firstId = asArray(optsResp?.menuItem)[0]?.value;
 
-          const bodyText = await page
-            .locator('body')
-            .innerText({ timeout: 10_000 })
-            .catch(() => '');
-          const lower = bodyText.toLowerCase();
-
-          const noResults =
-            lower.includes('no records') ||
-            lower.includes('no results') ||
-            lower.includes('no matching') ||
-            lower.includes('not found');
-
-          const certificates: Array<{
-            family?: string;
-            manufacturer?: string;
-            standard?: string;
-          }> = [];
-          const rows = await page
-            .locator('table tr, [class*="result"] li, [class*="result"] tr')
-            .all()
-            .catch(() => []);
-          for (const row of rows.slice(0, 50)) {
-            const text = (await row.innerText().catch(() => '')).trim();
-            if (!text || text.length < 6) continue;
-            if (!text.toLowerCase().includes(make.toLowerCase())) continue;
-            certificates.push({
-              family: /([A-Z0-9]{8,17})/.exec(text)?.[1],
-              manufacturer: make,
-              standard: /(Tier\s?\d|Bin\s?\d+|LEV\s?\w+|federal|california)/i.exec(text)?.[1],
-            });
-          }
-
-          const certFound = !noResults && (certificates.length > 0 || lower.includes(make.toLowerCase()));
-
-          return {
-            status: 'success',
-            parsedData: {
-              data_available: true,
-              cert_found: certFound,
-              searched_for: { make, model: extras.model, year: extras.year },
-              certificates: certificates.slice(0, 20),
-              raw_text: bodyText.slice(0, 4000),
-            },
-            normalizedFacts: [
-              { key: 'epa_cert_found', value: certFound, confidence: certFound ? 80 : 70 },
-            ],
-            costUsd: 0,
+      let fuel: EpaParsed['fuel_economy'];
+      let raw: unknown;
+      if (firstId) {
+        const v = (await feJson(`${FE}/vehicle/${firstId}`)) as Record<string, string> | null;
+        if (v) {
+          raw = v;
+          fuel = {
+            cityMpg: Number(v.city08) || undefined,
+            highwayMpg: Number(v.highway08) || undefined,
+            combinedMpg: Number(v.comb08) || undefined,
+            co2GramsPerMile: Number(v.co2TailpipeGpm) || undefined,
+            fuelType: v.fuelType,
           };
-        },
-        { proxy: 'auto' },
-      );
-    } catch (err) {
-      logger.error({ err }, 'usa_fed_epa_certification: scrape failed');
+        }
+      }
+
       return {
-        status: 'failed',
-        errorCode: 'scrape_error',
-        errorMessage: err instanceof Error ? err.message : String(err),
+        status: 'success',
+        parsedData: { data_available: true, cert_found: true, searched_for: { make, model, year }, matched_model: matched, fuel_economy: fuel, raw },
+        normalizedFacts: [
+          { key: 'epa_us_certified', value: true, confidence: 88 },
+          ...(fuel?.combinedMpg ? [{ key: 'epa_combined_mpg', value: fuel.combinedMpg, confidence: 85 }] : []),
+          ...(fuel?.co2GramsPerMile ? [{ key: 'epa_co2_gpm', value: fuel.co2GramsPerMile, confidence: 85 }] : []),
+        ],
+        costUsd: 0,
       };
+    } catch (err) {
+      logger.error({ err }, 'usa_fed_epa_certification: lookup failed');
+      return { status: 'failed', errorCode: 'lookup_error', errorMessage: err instanceof Error ? err.message : String(err) };
     }
   },
 };

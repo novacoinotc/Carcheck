@@ -12,6 +12,8 @@ interface NicbParsed {
 }
 
 const NICB_URL = 'https://www.nicb.org/vincheck';
+// Stable sitekey read from the live page (also re-read at runtime as a fallback).
+const NICB_SITEKEY = '6LcYETIUAAAAAKz6T9MxMEllN8yw0ffsErIbAGS-';
 
 export const nicbVinCheckWorker: ScrapeWorker<NicbParsed> = {
   key: 'usa_fed_nicb_vincheck',
@@ -22,127 +24,101 @@ export const nicbVinCheckWorker: ScrapeWorker<NicbParsed> = {
     }
     const vin = parsed.data.vin;
     if (!vin) {
-      return {
-        status: 'not_applicable',
-        errorCode: 'vin_required',
-        errorMessage: 'NICB VINCheck requires the VIN',
-      };
+      return { status: 'not_applicable', errorCode: 'vin_required', errorMessage: 'NICB VINCheck requires the VIN' };
     }
-
-    // NICB is protected by reCAPTCHA. Without a 2captcha key we cannot solve it.
     if (!process.env.TWOCAPTCHA_API_KEY) {
-      return {
-        status: 'skipped',
-        errorCode: 'captcha_unconfigured',
-        errorMessage: 'NICB requires reCAPTCHA solving; TWOCAPTCHA_API_KEY not set',
-      };
+      return { status: 'skipped', errorCode: 'captcha_unconfigured', errorMessage: 'NICB requires reCAPTCHA; TWOCAPTCHA_API_KEY not set' };
     }
 
     try {
       // 5/day/IP rate limit → always route via rotating proxy.
       return await withPage<ScrapeResult<NicbParsed>>(
         async (page) => {
-          await page.goto(NICB_URL, { waitUntil: 'domcontentloaded', timeout: 25_000 });
+          await page.goto(NICB_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
-          const vinInput = page
-            .locator(
-              'input[name*="vin" i], input[id*="vin" i], input[placeholder*="VIN" i], input[type="text"]',
-            )
-            .first();
+          // The page has a site-search box too; target the VINCheck field by name.
+          const vinInput = page.locator('input[name="vin"]').first();
           await vinInput.waitFor({ state: 'visible', timeout: 15_000 });
           await vinInput.fill(vin);
 
-          // Accept terms checkbox(es) if present.
-          const terms = page.locator('input[type="checkbox"]');
-          const termsCount = await terms.count().catch(() => 0);
-          for (let i = 0; i < termsCount; i++) {
-            await terms.nth(i).check({ timeout: 3_000 }).catch(() => undefined);
-          }
+          // Accept terms (named checkbox in the Drupal form).
+          await page.locator('input[name="agree_terms"]').check({ timeout: 5_000 }).catch(() => undefined);
+          // Any consent modal "Continue".
+          await page.locator('button:has-text("Continue")').first().click({ timeout: 2_000 }).catch(() => undefined);
 
-          // Discover the reCAPTCHA site key from the rendered widget.
-          const siteKey = await page
-            .locator('.g-recaptcha, [data-sitekey]')
-            .first()
-            .getAttribute('data-sitekey')
-            .catch(() => null);
+          const siteKey =
+            (await page.locator('.g-recaptcha, [data-sitekey]').first().getAttribute('data-sitekey').catch(() => null)) ||
+            NICB_SITEKEY;
 
-          if (siteKey) {
-            try {
-              const token = await solveReCaptchaV2({ siteKey, pageUrl: NICB_URL });
-              // Inject the token into the standard reCAPTCHA response field.
-              await page.evaluate((t) => {
-                const set = (sel: string) => {
-                  document.querySelectorAll<HTMLTextAreaElement>(sel).forEach((el) => {
-                    el.value = t;
-                    el.style.display = 'block';
-                  });
-                };
-                set('textarea#g-recaptcha-response');
-                set('textarea[name="g-recaptcha-response"]');
-              }, token);
-            } catch (capErr) {
-              logger.warn({ capErr }, 'nicb: captcha solve failed');
-              return {
-                status: 'partial',
-                errorCode: 'captcha_failed',
-                errorMessage: capErr instanceof Error ? capErr.message : String(capErr),
-                costUsd: 0.05,
-              };
-            }
-          }
+          const token = await solveReCaptchaV2({ siteKey, pageUrl: NICB_URL });
+          await page.evaluate((t) => {
+            document.querySelectorAll<HTMLTextAreaElement>('textarea[name="g-recaptcha-response"], textarea#g-recaptcha-response').forEach((el) => {
+              el.value = t;
+              el.style.display = 'block';
+            });
+          }, token);
 
           const submit = page
-            .locator(
-              'button:has-text("Search"), button:has-text("Submit"), button[type="submit"], input[type="submit"]',
-            )
+            .locator('button:has-text("Search VIN"), input[type="submit"][value*="Search" i], button[type="submit"]')
             .first();
           await Promise.all([
             page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => undefined),
             submit.click({ timeout: 10_000 }).catch(() => undefined),
           ]);
-          await page.waitForTimeout(2500);
 
-          const bodyText = await page
-            .locator('body')
-            .innerText({ timeout: 10_000 })
-            .catch(() => '');
-          const lower = bodyText.toLowerCase();
+          // Results render via Drupal AJAX into a panel — poll up to 20s for it.
+          await page
+            .waitForFunction(
+              (v) => {
+                const t = document.body.innerText || '';
+                return /results\s+for|theft\s+records?\s*:|total\s+loss\s+records?\s*:|no\s+records/i.test(t) || t.toUpperCase().includes(String(v).toUpperCase() + '');
+              },
+              vin,
+              { timeout: 20_000, polling: 1000 },
+            )
+            .catch(() => undefined);
+          await page.waitForTimeout(1500);
 
-          // NICB returns "theft record" / "salvage record" sections.
-          const theftRecord =
-            /theft\s+record/i.test(bodyText) &&
-            !/no\s+theft\s+record/i.test(bodyText) &&
-            !lower.includes('no records');
+          const bodyText = await page.locator('body').innerText({ timeout: 10_000 }).catch(() => '');
+
+          // Only trust the result when NICB actually rendered a results panel for
+          // THIS VIN. Otherwise we're still looking at the form/instructions and any
+          // "salvage"/"theft" word match is boilerplate — report partial, not a record.
+          const resultsRendered =
+            (/vincheck\W*results|results\s+for/i.test(bodyText) && bodyText.toUpperCase().includes(vin.toUpperCase())) ||
+            /\b(theft|total\s+loss)\s+records?\s*:/i.test(bodyText);
+
+          if (!resultsRendered) {
+            return {
+              status: 'partial',
+              parsedData: { data_available: false, vin, theft_record: false, salvage_record: false, raw_text: bodyText.slice(0, 2000) },
+              errorCode: 'no_results_rendered',
+              errorMessage: 'NICB did not render a results panel (captcha rejected or rate-limited)',
+              costUsd: 0.003,
+            };
+          }
+
+          const theftRecord = /theft\s+records?\s*:?\s*(?!no\b|0\b)/i.test(bodyText) && !/no\s+theft\s+record|theft\s+records?\s*:\s*(no|0)/i.test(bodyText);
           const salvageRecord =
-            /salvage\s+(?:record|total\s+loss)/i.test(bodyText) &&
-            !/no\s+salvage/i.test(bodyText) &&
-            !lower.includes('no records');
+            !/no\s+(salvage|total\s+loss)|(salvage|total\s+loss)\s+records?\s*:\s*(no|0)/i.test(bodyText) &&
+            /(salvage|total\s+loss)\s+records?\s*:?/i.test(bodyText) &&
+            /found|reported|yes|\b[1-9]\b/i.test(bodyText);
 
           return {
             status: 'success',
-            parsedData: {
-              data_available: true,
-              vin,
-              theft_record: theftRecord,
-              salvage_record: salvageRecord,
-              raw_text: bodyText.slice(0, 4000),
-            },
+            parsedData: { data_available: true, vin, theft_record: theftRecord, salvage_record: salvageRecord, raw_text: bodyText.slice(0, 4000) },
             normalizedFacts: [
               { key: 'nicb_theft_record', value: theftRecord, confidence: 85 },
               { key: 'nicb_salvage_record', value: salvageRecord, confidence: 85 },
             ],
-            costUsd: 0.05,
+            costUsd: 0.003,
           };
         },
         { proxy: 'always' },
       );
     } catch (err) {
       logger.error({ err }, 'usa_fed_nicb_vincheck: scrape failed');
-      return {
-        status: 'failed',
-        errorCode: 'scrape_error',
-        errorMessage: err instanceof Error ? err.message : String(err),
-      };
+      return { status: 'failed', errorCode: 'scrape_error', errorMessage: err instanceof Error ? err.message : String(err) };
     }
   },
 };

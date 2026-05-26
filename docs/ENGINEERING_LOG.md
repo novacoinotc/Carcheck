@@ -177,6 +177,21 @@ Leyenda: ✅ funciona · 🟡 pipeline ok / falta validar dato real · 🔧 en p
 
 ## 11. Diario de hallazgos (test → save)
 
+### 2026-05-25 (sesión 2) — US FEDERAL: EPA ✅, CA smog ✅, NICB honesto-parcial
+
+- **usa_fed_epa_certification** ✅ RESUELTA. Reescrita: decodifica el VIN internamente (decodeVin) y
+  consulta **fueleconomy.gov API** (gratis, sin key). Confirma config certificada en US + devuelve
+  MPG/CO2 reales. Match de modelo: prefiere el nombre más corto (modelo base) sobre sub-trims.
+  Probado Ford VIN → cert_found:true, "F150 Pickup 2WD", 22 MPG combinado, 404 g/mi CO2.
+- **usa_st_ca_smogcheck** ✅ OK. Degrada bien: para vehículo no-CA devuelve success con 0 registros
+  (correcto, no es CA). Form BAR carga; pipeline correcto.
+- **usa_fed_nicb_vincheck** 🟡 honesto-parcial. reCAPTCHA v2 sitekey `6LcYETIUAAAAAKz6T9MxMEllN8yw0ffsErIbAGS-`,
+  campo real `input[name=vin]` (antes agarraba la barra de búsqueda del sitio), checkbox `agree_terms`.
+  2captcha resuelve pero el token se RECHAZA server-side (misma clase que REPUVE — SPA/Drupal endurecido).
+  Worker ahora ESTRICTO: solo reporta robo/salvage si renderiza panel de resultados real; si no →
+  `partial`/`no_results_rendered` (NUNCA falso positivo). Cobertura alterna: NMVTIS vía VinAudit (key del user)
+  incluye theft/salvage/total-loss de fuente más completa. NEXT: interceptar AJAX Drupal o usar NMVTIS.
+
 ### 2026-05-25 (sesión 2) — ✅ OEM RECALLS (9 fuentes) RESUELTAS vía backbone NHTSA
 
 **Problema hallado**: el parser OEM viejo (`parseOemRecalls`) producía FALSOS POSITIVOS — contaba
