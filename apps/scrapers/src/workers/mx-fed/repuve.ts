@@ -105,7 +105,9 @@ export const repuveWorker: ScrapeWorker<RepuveParsed> = {
           let bodyText = '';
           for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             logger.info({ queryKind, attempt }, 'repuve: solving recaptcha');
-            const token = await solveReCaptchaV2({ siteKey, pageUrl: REPUVE_URL });
+            // REPUVE's widget is size=invisible (verified live) — 2captcha must be
+            // told so it returns the correct token type, else the server rejects it.
+            const token = await solveReCaptchaV2({ siteKey, pageUrl: REPUVE_URL, invisible: true });
             await page.evaluate((t) => {
               document.querySelectorAll('textarea[name="g-recaptcha-response"]').forEach((el) => {
                 const ta = el as HTMLTextAreaElement;
@@ -162,6 +164,25 @@ export const repuveWorker: ScrapeWorker<RepuveParsed> = {
           }
 
           const lower = bodyText.toLowerCase();
+
+          // CRITICAL: if the captcha was rejected on every attempt, we never actually
+          // queried REPUVE. Report that honestly — do NOT fall through to "not found",
+          // which would falsely tell the user the vehicle has no REPUVE record.
+          if (lower.includes('recaptcha no fue superado')) {
+            return {
+              status: 'failed' as const,
+              errorCode: 'captcha_rejected',
+              errorMessage:
+                'REPUVE rejected the reCAPTCHA token (hardened SPA binds the token to its own widget). Needs deeper RE of the client-side encryption or a data provider.',
+              parsedData: {
+                query_kind: queryKind,
+                found: false,
+                robo_status: 'desconocido' as const,
+                raw_text: bodyText.slice(0, 1500),
+              },
+              costUsd: 0.06,
+            };
+          }
 
           // A real hit shows vehicle data ("Marca", "Estatus"...). If the page still
           // shows the search prompt or an explicit not-found, there's no result.

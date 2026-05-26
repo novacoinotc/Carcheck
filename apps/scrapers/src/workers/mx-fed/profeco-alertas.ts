@@ -1,5 +1,6 @@
 import { withPage } from '../../lib/browser-pool';
 import { logger } from '../../lib/logger';
+import { decodeVin } from '../../lib/vin';
 import { scrapeRequestSchema, type ScrapeResult, type ScrapeWorker } from '../types';
 
 interface ProfecoAlert {
@@ -30,17 +31,28 @@ export const profecoAlertasWorker: ScrapeWorker<ProfecoParsed> = {
       return { status: 'failed', errorCode: 'invalid_input', errorMessage: parsed.error.message };
     }
     const extras = parsed.data as { make?: string; model?: string; year?: number };
-    // PROFECO Alertas is indexed by make/model/year, not by VIN.
-    // The orchestrator passes decoded vehicle metadata along with the query.
-    const make = extras.make;
+    // PROFECO Alertas is indexed by make/model/year, not by VIN. Use orchestrator-
+    // supplied metadata if present, else decode the VIN here (self-sufficient).
+    let make = extras.make;
+    let model = extras.model;
+    let year = extras.year;
+    if (!make && parsed.data.vin) {
+      const d = await decodeVin(parsed.data.vin);
+      if (d) {
+        make = d.make;
+        model = model ?? d.model;
+        year = year ?? (d.year ? Number(d.year) : undefined);
+      }
+    }
     if (!make) {
       return {
         status: 'not_applicable',
         errorCode: 'make_required',
-        errorMessage:
-          'PROFECO Alertas needs decoded make/model/year (pass after NHTSA decode)',
+        errorMessage: 'PROFECO Alertas needs a make (VIN decode failed)',
       };
     }
+    extras.model = model;
+    extras.year = year;
 
     try {
       return await withPage<ScrapeResult<ProfecoParsed>>(async (page) => {

@@ -177,6 +177,33 @@ Leyenda: ✅ funciona · 🟡 pipeline ok / falta validar dato real · 🔧 en p
 
 ## 11. Diario de hallazgos (test → save)
 
+### 2026-05-25 (sesión 2) — MX: Jalisco pipeline ✅, REPUVE honesto, BUGS SISTÉMICOS críticos
+
+**🐛 BUG SISTÉMICO #1 (afectaba a TODOS los scrapers con captcha)**: el orquestador
+(`apps/web/lib/orchestrator/run-preview.ts`) abortaba cada scraper a los **25s** (`SCRAPER_TIMEOUT_MS`),
+pero los workers con captcha tardan 40-120s → en producción NINGÚN scraper con captcha podía
+completar jamás. Subido a **150_000ms**. (Las rutas API ya tienen maxDuration=300 y corren en paralelo.)
+**🐛 BUG SISTÉMICO #2**: Caddy cortaba requests largas (~100s → HTTP 502). Añadido `transport http`
+con read/write_timeout 300s en deploy/Caddyfile. (Falta `docker compose up -d` para aplicar Caddy.)
+**🐛 BUG #3 (Jalisco)**: mi loop de invocación de callbacks de grecaptcha hacía traversal sin límite
+de `___grecaptcha_cfg` que tiene refs circulares → page.evaluate colgaba 200s. Arreglado a walk acotado 3 niveles.
+
+- **mx_st_jal_control_vehicular** ✅ PIPELINE FUNCIONAL. URL real hallada:
+  `gobiernoenlinea1.jalisco.gob.mx/serviciosVehiculares/adeudos` (la baseUrl vieja sfp.jalisco era landing).
+  Campos: placa + numeroSerie + nombrePropietario + numeroMotor; **reCAPTCHA INVISIBLE** sitekey
+  `6LehxCgfAAAAAE_6lvOTiXBtQNZCyc37CLZssnzC`. Requiere conexión DIRECTA (proxy time-outea). **El captcha
+  invisible 2captcha SÍ es ACEPTADO** (llega a validación server en ~11s). Bloqueo actual: el server
+  pide el **número de motor** ("La información proporcionada es incorrecta (Número de motor)") — dato
+  de la tarjeta de circulación que el USER debe capturar. Worker ya acepta `ownerName`/`engineNumber`
+  opcionales. ACCIÓN PRODUCTO: el form de nuevo reporte debe pedir nº de motor para estados como Jalisco.
+- **mx_fed_repuve** ⛔ confirmado intratable por scraping. Su reCAPTCHA es INVISIBLE (probé invisible:true
+  en 2captcha) pero el token SIGUE rechazado ("El reCaptcha no fue superado correctamente"). REPUVE es
+  Angular SPA que cifra {criterio+token} client-side y liga el token a su propio widget. Diferencia con
+  Jalisco: Jalisco es form POST simple (token en campo → server valida normal); REPUVE liga el token.
+  **Arreglado bug de honestidad**: antes devolvía success/found:false (¡decía "auto no está en REPUVE"
+  cuando en realidad el captcha fue rechazado!). Ahora devuelve `failed`/`captcha_rejected` honesto.
+  NEXT real: proveedor de datos REPUVE (comerciales existen) o RE del bundle Angular (cifrado criterio+llave).
+
 ### 2026-05-25 (sesión 2) — US FEDERAL: EPA ✅, CA smog ✅, NICB honesto-parcial
 
 - **usa_fed_epa_certification** ✅ RESUELTA. Reescrita: decodifica el VIN internamente (decodeVin) y

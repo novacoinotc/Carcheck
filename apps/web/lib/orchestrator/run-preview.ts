@@ -13,7 +13,10 @@ import { computeBaselineRisk } from '@carcheck/risk-engine';
 import { analyzeReport, type AnalyzeOutput } from '@carcheck/ai-analyst';
 import type { QueryInput, SourceResult } from '@carcheck/shared-types';
 
-const SCRAPER_TIMEOUT_MS = 25_000;
+// Railway scrapers that solve CAPTCHAs (REPUVE, state portals, NICB) routinely
+// take 40-120s. The preview/create API routes allow 300s and sources run in
+// parallel, so give scrapers a generous cap rather than killing them at 25s.
+const SCRAPER_TIMEOUT_MS = 150_000;
 
 export interface PreviewReport {
   reportId: string | null;

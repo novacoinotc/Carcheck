@@ -7,6 +7,12 @@
 	reverse_proxy scrapers:8080 {
 		health_uri /health
 		health_interval 30s
+		# Captcha-solving scrapers can run 2-4 min; don't let the proxy cut them off.
+		transport http {
+			dial_timeout 10s
+			read_timeout 300s
+			write_timeout 300s
+		}
 	}
 	log {
 		output stdout
